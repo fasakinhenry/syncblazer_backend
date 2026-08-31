@@ -3,6 +3,7 @@ import { env } from "@/config/env.ts";
 import { logger } from "@/utils/logger.ts";
 import { User } from "@/models/User.model.ts";
 import { Room } from "@/models/Room.model.ts";
+import { Note } from "@/models/Note.model.ts";
 
 export async function connectDatabase(): Promise<void> {
   mongoose.set("strictQuery", true);
@@ -26,6 +27,7 @@ export async function connectDatabase(): Promise<void> {
   // all have email = null, which a non-sparse unique index only allows once).
   await User.syncIndexes();
   await Room.syncIndexes();
+  await Note.syncIndexes();
 }
 
 export async function disconnectDatabase(): Promise<void> {

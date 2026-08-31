@@ -6,6 +6,8 @@ import { noteRouter } from "@/routes/note.routes.ts";
 import { transferRouter } from "@/routes/transfer.routes.ts";
 import { activityRouter } from "@/routes/activity.routes.ts";
 import { uploadRouter } from "@/routes/upload.routes.ts";
+import { noteAssetRouter } from "@/routes/noteAsset.routes.ts";
+import { linkPreviewRouter } from "@/routes/linkPreview.routes.ts";
 
 export const apiRouter = Router();
 
@@ -20,3 +22,5 @@ apiRouter.use("/notes", noteRouter);
 apiRouter.use("/transfers", transferRouter);
 apiRouter.use("/activity", activityRouter);
 apiRouter.use("/uploads", uploadRouter);
+apiRouter.use("/note-images", noteAssetRouter);
+apiRouter.use("/link-preview", linkPreviewRouter);
