@@ -3,6 +3,9 @@ import { OAuth2Client } from "google-auth-library";
 import { User } from "@/models/User.model.ts";
 import { Room } from "@/models/Room.model.ts";
 import { Device } from "@/models/Device.model.ts";
+import { Note } from "@/models/Note.model.ts";
+import { Transfer } from "@/models/Transfer.model.ts";
+import { Activity } from "@/models/Activity.model.ts";
 import { RoomType, DeviceStatus } from "@/constants/index.ts";
 import { ApiError } from "@/utils/ApiError.ts";
 import { asyncHandler } from "@/utils/asyncHandler.ts";
@@ -216,6 +219,37 @@ export const updateMe = asyncHandler(async (req: Request, res: Response) => {
   res.json({ success: true, data: { user: toPublicUser(user) } });
 });
 
+export const deleteMe = asyncHandler(async (req: Request, res: Response) => {
+  const userId = req.userId;
+
+  await Room.updateMany({ ownerId: userId }, { $set: { ownerId: null } });
+  await Room.updateMany({}, { $pull: { memberIds: userId } });
+  await Room.updateMany({}, { $pull: { deviceIds: { $exists: true } } });
+
+  await Device.deleteMany({ ownerId: userId });
+  await User.findByIdAndDelete(userId);
+
+  res.json({ success: true, data: { deleted: true } });
+});
+
 export const googleAuthStatus = asyncHandler(async (_req: Request, res: Response) => {
   res.json({ success: true, data: { enabled: !!googleClient } });
+});
+
+export const deleteAccount = asyncHandler(async (req: Request, res: Response) => {
+  const userId = req.userId!;
+
+  await Promise.all([
+    Device.deleteMany({ ownerId: userId }),
+    Room.deleteMany({ ownerId: userId }),
+    Note.deleteMany({ ownerId: userId }),
+    Transfer.deleteMany({ ownerId: userId }),
+    Activity.deleteMany({ ownerId: userId }),
+    // Rooms this user joined but doesn't own should just lose them as a member.
+    Room.updateMany({ memberIds: userId }, { $pull: { memberIds: userId } }),
+  ]);
+
+  await User.findByIdAndDelete(userId);
+
+  res.json({ success: true, data: { deleted: true } });
 });

@@ -23,7 +23,9 @@ export const listRooms = asyncHandler(async (req: Request, res: Response) => {
     // Instant rooms clutter "your rooms" once you've moved on; they stay
     // reachable by code until they expire, they just don't linger in the list.
     isInstant: { $ne: true },
-  }).sort({ isDefault: -1, createdAt: -1 });
+  })
+    .sort({ isDefault: -1, createdAt: -1 })
+    .populate("deviceIds", "status");
   res.json({ success: true, data: { rooms } });
 });
 

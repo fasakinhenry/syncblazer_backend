@@ -1,5 +1,15 @@
 import { Router } from "express";
-import { google, googleAuthStatus, guest, login, me, refresh, register, updateMe } from "@/controllers/auth.controller.ts";
+import {
+  deleteAccount,
+  google,
+  googleAuthStatus,
+  guest,
+  login,
+  me,
+  refresh,
+  register,
+  updateMe,
+} from "@/controllers/auth.controller.ts";
 import { requireAuth } from "@/middleware/auth.middleware.ts";
 import { validate } from "@/middleware/validate.middleware.ts";
 import {
@@ -21,3 +31,4 @@ authRouter.post("/google", validate({ body: googleAuthSchema }), google);
 authRouter.post("/refresh", validate({ body: refreshSchema }), refresh);
 authRouter.get("/me", requireAuth, me);
 authRouter.patch("/me", requireAuth, validate({ body: updateMeSchema }), updateMe);
+authRouter.delete("/me", requireAuth, deleteAccount);
