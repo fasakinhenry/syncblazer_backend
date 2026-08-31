@@ -8,10 +8,19 @@ function required(name: string, fallback?: string): string {
   return value;
 }
 
+function parseClientOrigins(): string[] {
+  const raw = process.env.CLIENT_ORIGIN ?? process.env.CLIENT_ORIGINS ?? "http://localhost:5173";
+  return raw
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+}
+
 export const env = {
   nodeEnv: process.env.NODE_ENV ?? "development",
   port: Number(process.env.PORT ?? 4000),
   clientOrigin: process.env.CLIENT_ORIGIN ?? "http://localhost:5173",
+  clientOrigins: parseClientOrigins(),
 
   mongodbUri: required("MONGODB_URI", "mongodb://127.0.0.1:27017/syncblaze"),
 

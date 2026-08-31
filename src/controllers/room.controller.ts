@@ -44,7 +44,7 @@ export const getRoom = asyncHandler(async (req: Request, res: Response) => {
       ...device,
       isLocal: !!viewerDeviceId && id !== viewerDeviceId && areDevicesOnSameNetwork(viewerDeviceId, id),
     };
-  }) as typeof room.deviceIds;
+  }) as unknown as typeof room.deviceIds;
 
   const recentActivity = await Activity.find({ roomId: room._id }).sort({ createdAt: -1 }).limit(20);
   const members = await User.find({ _id: { $in: [room.ownerId, ...room.memberIds] } }).select("name avatarUrl");
