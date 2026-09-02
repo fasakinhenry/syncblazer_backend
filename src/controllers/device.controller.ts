@@ -93,14 +93,25 @@ export const consumeDevicePairingSession = asyncHandler(async (req: Request, res
     throw ApiError.forbidden("This pairing code belongs to a different account");
   }
 
-  const newDevice = await Device.create({
-    ownerId: req.userId,
-    name: device.name,
-    type: device.type,
-    platform: device.platform,
-    status: DeviceStatus.ONLINE,
-    lastSeenAt: new Date(),
-  });
+  let newDevice = device.installId
+    ? await Device.findOneAndUpdate(
+        { ownerId: req.userId, installId: device.installId },
+        { status: DeviceStatus.ONLINE, lastSeenAt: new Date(), type: device.type, platform: device.platform },
+        { new: true }
+      )
+    : null;
+
+  if (!newDevice) {
+    newDevice = await Device.create({
+      ownerId: req.userId,
+      installId: device.installId,
+      name: device.name,
+      type: device.type,
+      platform: device.platform,
+      status: DeviceStatus.ONLINE,
+      lastSeenAt: new Date(),
+    });
+  }
 
   await Room.updateOne({ _id: session.roomId }, { $addToSet: { deviceIds: newDevice._id } });
 

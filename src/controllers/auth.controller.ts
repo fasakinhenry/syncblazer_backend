@@ -32,12 +32,31 @@ interface DeviceInfo {
   name: string;
   type: string;
   platform: string;
+  installId?: string;
 }
 
 async function issueDevice(userId: string, roomId: string, device?: DeviceInfo) {
   if (!device) return undefined;
+
+  // Recognize a device we've already seen (by its stable per-browser
+  // installId) and reuse that record rather than creating a duplicate on
+  // every login. Don't touch `name` here — the user may have renamed it,
+  // and re-detecting it every login shouldn't undo that.
+  if (device.installId) {
+    const existing = await Device.findOneAndUpdate(
+      { ownerId: userId, installId: device.installId },
+      { status: DeviceStatus.ONLINE, lastSeenAt: new Date(), type: device.type, platform: device.platform },
+      { new: true }
+    );
+    if (existing) {
+      await Room.updateOne({ _id: roomId }, { $addToSet: { deviceIds: existing._id } });
+      return existing;
+    }
+  }
+
   const created = await Device.create({
     ownerId: userId,
+    installId: device.installId,
     name: device.name,
     type: device.type,
     platform: device.platform,

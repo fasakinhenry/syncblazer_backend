@@ -28,7 +28,7 @@ export const createTransfer = asyncHandler(async (req: Request, res: Response) =
     roomId: transfer.roomId.toString(),
     type: ActivityType.TRANSFER,
     message: `${sender.name} sent "${transfer.name}" to ${receiver.name}`,
-    metadata: { transferId: transfer._id },
+    metadata: { transferId: transfer._id, transferMethod: transfer.transferMethod },
   });
 
   getIO()?.to(`device:${receiverDeviceId}`).emit("transfer:incoming", { transfer });

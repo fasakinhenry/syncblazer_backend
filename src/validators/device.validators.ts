@@ -12,6 +12,7 @@ const deviceInfoSchema = z.object({
     DevicePlatform.ANDROID,
     DevicePlatform.WEB,
   ]),
+  installId: z.string().min(1).max(100).optional(),
 });
 
 export const createPairingSessionSchema = z.object({
