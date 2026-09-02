@@ -11,6 +11,7 @@ import { ApiError } from "@/utils/ApiError.ts";
 import { asyncHandler } from "@/utils/asyncHandler.ts";
 import { signAccessToken, signRefreshToken, verifyRefreshToken } from "@/utils/jwt.ts";
 import { generateAvatarUrl, generateGuestName } from "@/utils/guestIdentity.ts";
+import { dailyCounts } from "@/utils/dailyCounts.ts";
 import { env } from "@/config/env.ts";
 
 const googleClient = env.googleClientId ? new OAuth2Client(env.googleClientId) : null;
@@ -261,6 +262,67 @@ export const me = asyncHandler(async (req: Request, res: Response) => {
   const user = await User.findById(req.userId);
   if (!user) throw ApiError.notFound("User not found");
   res.json({ success: true, data: { user: toPublicUser(user) } });
+});
+
+export const getMyStats = asyncHandler(async (req: Request, res: Response) => {
+  const userId = req.userId;
+
+  const [
+    noteCount,
+    publicNoteCount,
+    roomCount,
+    deviceCount,
+    transferCount,
+    sentBytes,
+    publicViews,
+    typeBreakdown,
+    methodBreakdown,
+    transferTrend,
+    noteTrend,
+  ] = await Promise.all([
+    Note.countDocuments({ ownerId: userId }),
+    Note.countDocuments({ ownerId: userId, "publicShare.enabled": true }),
+    Room.countDocuments({ ownerId: userId }),
+    Device.countDocuments({ ownerId: userId }),
+    Transfer.countDocuments({ ownerId: userId }),
+    Transfer.aggregate<{ _id: null; total: number }>([
+      { $match: { ownerId: userId, status: "completed" } },
+      { $group: { _id: null, total: { $sum: "$size" } } },
+    ]).then((rows) => rows[0]?.total ?? 0),
+    Note.aggregate<{ _id: null; total: number }>([
+      { $match: { ownerId: userId, "publicShare.enabled": true } },
+      { $group: { _id: null, total: { $sum: "$publicShare.viewCount" } } },
+    ]).then((rows) => rows[0]?.total ?? 0),
+    Transfer.aggregate<{ _id: string; count: number }>([
+      { $match: { ownerId: userId } },
+      { $group: { _id: "$type", count: { $sum: 1 } } },
+    ]),
+    Transfer.aggregate<{ _id: string; count: number }>([
+      { $match: { ownerId: userId } },
+      { $group: { _id: "$transferMethod", count: { $sum: 1 } } },
+    ]),
+    dailyCounts(Transfer, 30, { ownerId: userId }),
+    dailyCounts(Note, 30, { ownerId: userId }),
+  ]);
+
+  res.json({
+    success: true,
+    data: {
+      counts: {
+        notes: noteCount,
+        publicNotes: publicNoteCount,
+        rooms: roomCount,
+        devices: deviceCount,
+        transfers: transferCount,
+        sentBytes,
+        publicViews,
+      },
+      transfersByType: Object.fromEntries(typeBreakdown.map((r) => [r._id, r.count])),
+      transfersByMethod: Object.fromEntries(methodBreakdown.map((r) => [r._id, r.count])),
+      transferTrend,
+      noteTrend,
+    },
+  });
 });
 
 export const updateMe = asyncHandler(async (req: Request, res: Response) => {

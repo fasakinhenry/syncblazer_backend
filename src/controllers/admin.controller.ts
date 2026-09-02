@@ -1,5 +1,4 @@
 import type { Request, Response } from "express";
-import type { Model, PipelineStage } from "mongoose";
 import { User } from "@/models/User.model.ts";
 import { Room } from "@/models/Room.model.ts";
 import { Note } from "@/models/Note.model.ts";
@@ -10,6 +9,7 @@ import { PageView } from "@/models/PageView.model.ts";
 import { ApiError } from "@/utils/ApiError.ts";
 import { asyncHandler } from "@/utils/asyncHandler.ts";
 import { sendEmail } from "@/services/mailer.service.ts";
+import { dailyCounts } from "@/utils/dailyCounts.ts";
 
 function toAdminUser(user: InstanceType<typeof User>) {
   return {
@@ -22,35 +22,6 @@ function toAdminUser(user: InstanceType<typeof User>) {
     updatedAt: user.get("updatedAt"),
     lastLoginAt: user.get("lastLoginAt"),
   };
-}
-
-/** Daily bucket counts for the last `days` days, oldest first, with no gaps
- * (a day with zero events still gets a 0 entry — charts don't like holes). */
-async function dailyCounts(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  model: Model<any>,
-  days: number,
-  dateField = "createdAt"
-): Promise<{ date: string; count: number }[]> {
-  const since = new Date();
-  since.setDate(since.getDate() - (days - 1));
-  since.setHours(0, 0, 0, 0);
-
-  const pipeline: PipelineStage[] = [
-    { $match: { [dateField]: { $gte: since } } },
-    { $group: { _id: { $dateToString: { format: "%Y-%m-%d", date: `$${dateField}` } }, count: { $sum: 1 } } },
-  ];
-  const rows = await model.aggregate<{ _id: string; count: number }>(pipeline);
-  const byDate = new Map(rows.map((r) => [r._id, r.count]));
-
-  const out: { date: string; count: number }[] = [];
-  for (let i = 0; i < days; i++) {
-    const d = new Date(since);
-    d.setDate(d.getDate() + i);
-    const key = d.toISOString().slice(0, 10);
-    out.push({ date: key, count: byDate.get(key) ?? 0 });
-  }
-  return out;
 }
 
 export const getOverview = asyncHandler(async (_req: Request, res: Response) => {

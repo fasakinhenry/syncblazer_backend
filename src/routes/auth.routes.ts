@@ -1,6 +1,7 @@
 import { Router } from "express";
 import {
   deleteAccount,
+  getMyStats,
   google,
   googleAuthStatus,
   guest,
@@ -30,5 +31,6 @@ authRouter.get("/google/status", googleAuthStatus);
 authRouter.post("/google", validate({ body: googleAuthSchema }), google);
 authRouter.post("/refresh", validate({ body: refreshSchema }), refresh);
 authRouter.get("/me", requireAuth, me);
+authRouter.get("/me/stats", requireAuth, getMyStats);
 authRouter.patch("/me", requireAuth, validate({ body: updateMeSchema }), updateMe);
 authRouter.delete("/me", requireAuth, deleteAccount);
