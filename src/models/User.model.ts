@@ -23,6 +23,7 @@ const userSchema = new Schema(
     // lifetime rather than instantly, in exchange for not needing a DB hit
     // on every authenticated request.
     tokenVersion: { type: Number, default: 0 },
+    lastLoginAt: { type: Date },
     preferences: {
       theme: { type: String, enum: ["light", "dark", "system"], default: "system" },
       clipboardSyncEnabled: { type: Boolean, default: false },

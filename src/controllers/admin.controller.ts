@@ -20,6 +20,7 @@ function toAdminUser(user: InstanceType<typeof User>) {
     avatarUrl: user.get("avatarUrl"),
     createdAt: user.get("createdAt"),
     updatedAt: user.get("updatedAt"),
+    lastLoginAt: user.get("lastLoginAt"),
   };
 }
 
@@ -144,16 +145,61 @@ export const getUserDetail = asyncHandler(async (req: Request, res: Response) =>
   if (!user) throw ApiError.notFound("User not found");
 
   const userId = user._id;
-  const [noteCount, roomCount, deviceCount, transferCount] = await Promise.all([
+  const [
+    noteCount,
+    roomCount,
+    deviceCount,
+    transferCount,
+    publicNoteCount,
+    completedBytes,
+    devices,
+    rooms,
+    recentNotes,
+    recentTransfers,
+    recentActivity,
+  ] = await Promise.all([
     Note.countDocuments({ ownerId: userId }),
     Room.countDocuments({ ownerId: userId }),
     Device.countDocuments({ ownerId: userId }),
     Transfer.countDocuments({ ownerId: userId }),
+    Note.countDocuments({ ownerId: userId, "publicShare.enabled": true }),
+    Transfer.aggregate<{ _id: null; total: number }>([
+      { $match: { ownerId: userId, status: "completed" } },
+      { $group: { _id: null, total: { $sum: "$size" } } },
+    ]).then((rows) => rows[0]?.total ?? 0),
+    Device.find({ ownerId: userId }).sort({ lastSeenAt: -1 }).limit(10).select("name type platform status lastSeenAt"),
+    Room.find({ ownerId: userId }).sort({ createdAt: -1 }).limit(10).select("name type isDefault createdAt"),
+    Note.find({ ownerId: userId })
+      .sort({ updatedAt: -1 })
+      .limit(10)
+      .select("title visibility publicShare.enabled publicShare.viewCount updatedAt"),
+    Transfer.find({ ownerId: userId })
+      .sort({ createdAt: -1 })
+      .limit(10)
+      .select("name type status transferMethod size createdAt")
+      .populate("senderDeviceId", "name")
+      .populate("receiverDeviceId", "name"),
+    Activity.find({ ownerId: userId }).sort({ createdAt: -1 }).limit(10).select("type message createdAt"),
   ]);
 
   res.json({
     success: true,
-    data: { user: toAdminUser(user), counts: { notes: noteCount, rooms: roomCount, devices: deviceCount, transfers: transferCount } },
+    data: {
+      user: toAdminUser(user),
+      counts: {
+        notes: noteCount,
+        rooms: roomCount,
+        devices: deviceCount,
+        transfers: transferCount,
+        publicNotes: publicNoteCount,
+        completedBytes,
+      },
+      devices,
+      rooms,
+      recentNotes,
+      recentTransfers,
+      recentActivity,
+    },
   });
 });
 

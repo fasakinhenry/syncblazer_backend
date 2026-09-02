@@ -97,6 +97,12 @@ function issueSession(userId: string, tokenVersion: number, deviceId?: string) {
   };
 }
 
+// Fire-and-forget on purpose — this is only for the admin dashboard's
+// "last active" column, not worth adding latency to every login for.
+function touchLastLogin(userId: string) {
+  User.updateOne({ _id: userId }, { $set: { lastLoginAt: new Date() } }).catch(() => undefined);
+}
+
 export const register = asyncHandler(async (req: Request, res: Response) => {
   const { name, email, password, device } = req.body;
 
@@ -120,6 +126,7 @@ export const register = asyncHandler(async (req: Request, res: Response) => {
     (user.get("tokenVersion") as number | undefined) ?? 0,
     createdDevice?._id.toString()
   );
+  touchLastLogin(user._id.toString());
 
   res.status(201).json({
     success: true,
@@ -145,6 +152,7 @@ export const login = asyncHandler(async (req: Request, res: Response) => {
     (user.get("tokenVersion") as number | undefined) ?? 0,
     createdDevice?._id.toString()
   );
+  touchLastLogin(user._id.toString());
 
   res.json({ success: true, data: { user: toPublicUser(user), device: createdDevice, ...session } });
 });
@@ -165,6 +173,7 @@ export const guest = asyncHandler(async (req: Request, res: Response) => {
     (user.get("tokenVersion") as number | undefined) ?? 0,
     createdDevice?._id.toString()
   );
+  touchLastLogin(user._id.toString());
 
   res.status(201).json({
     success: true,
@@ -218,6 +227,7 @@ export const google = asyncHandler(async (req: Request, res: Response) => {
     (user.get("tokenVersion") as number | undefined) ?? 0,
     createdDevice?._id.toString()
   );
+  touchLastLogin(user._id.toString());
 
   res.status(room ? 201 : 200).json({
     success: true,
