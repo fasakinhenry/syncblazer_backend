@@ -97,7 +97,7 @@ export const shareNote = asyncHandler(async (req: Request, res: Response) => {
 
   const enabled = req.body.enabled as boolean;
   if (enabled && !note.publicShare?.token) {
-    note.publicShare = { enabled: true, token: randomBytes(12).toString("hex") };
+    note.publicShare = { enabled: true, token: randomBytes(12).toString("hex"), viewCount: 0 };
   } else {
     note.set("publicShare.enabled", enabled);
   }
@@ -118,10 +118,11 @@ export const shareNote = asyncHandler(async (req: Request, res: Response) => {
 
 // Public, unauthenticated: anyone with the link can read (never edit).
 export const getPublicNote = asyncHandler(async (req: Request, res: Response) => {
-  const note = await Note.findOne({
-    "publicShare.token": req.params.token,
-    "publicShare.enabled": true,
-  }).select("title content fontFamily updatedAt ownerId");
+  const note = await Note.findOneAndUpdate(
+    { "publicShare.token": req.params.token, "publicShare.enabled": true },
+    { $inc: { "publicShare.viewCount": 1 }, $set: { "publicShare.lastViewedAt": new Date() } },
+    { new: true }
+  ).select("title content fontFamily updatedAt ownerId");
   if (!note) throw ApiError.notFound("This shared note isn't available");
 
   const owner = await User.findById(note.get("ownerId")).select("name avatarUrl");

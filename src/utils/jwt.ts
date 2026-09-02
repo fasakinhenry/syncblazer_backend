@@ -4,6 +4,7 @@ import { env } from "@/config/env.ts";
 export interface AccessTokenPayload {
   userId: string;
   deviceId?: string;
+  tokenVersion?: number;
 }
 
 export function signAccessToken(payload: AccessTokenPayload): string {

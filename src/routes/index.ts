@@ -9,6 +9,8 @@ import { uploadRouter } from "@/routes/upload.routes.ts";
 import { noteAssetRouter } from "@/routes/noteAsset.routes.ts";
 import { linkPreviewRouter } from "@/routes/linkPreview.routes.ts";
 import { userRouter } from "@/routes/user.routes.ts";
+import { adminRouter } from "@/routes/admin.routes.ts";
+import { analyticsRouter } from "@/routes/analytics.routes.ts";
 
 export const apiRouter = Router();
 
@@ -26,3 +28,5 @@ apiRouter.use("/uploads", uploadRouter);
 apiRouter.use("/note-images", noteAssetRouter);
 apiRouter.use("/link-preview", linkPreviewRouter);
 apiRouter.use("/users", userRouter);
+apiRouter.use("/admin", adminRouter);
+apiRouter.use("/analytics", analyticsRouter);

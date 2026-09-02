@@ -18,6 +18,8 @@ const noteSchema = new Schema(
       enabled: { type: Boolean, default: false },
       // Unguessable id used in the public read-only URL; only set once shared.
       token: { type: String, unique: true, sparse: true },
+      viewCount: { type: Number, default: 0 },
+      lastViewedAt: { type: Date },
     },
   },
   { timestamps: true }

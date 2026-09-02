@@ -15,6 +15,7 @@
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
+    "express-rate-limit": "^8.7.0",
     "google-auth-library": "^11.0.2",
     "helmet": "^7.1.0",
     "jsonwebtoken": "^9.0.2",
@@ -22,6 +23,7 @@
     "morgan": "^1.10.0",
     "multer": "^1.4.5-lts.1",
     "nanoid": "^5.0.7",
+    "resend": "^6.25.0",
     "socket.io": "^4.7.5",
     "zod": "^3.23.8"
   },

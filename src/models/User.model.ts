@@ -16,6 +16,13 @@ const userSchema = new Schema(
     googleId: { type: String, unique: true, sparse: true },
     avatarUrl: { type: String },
     defaultRoomId: { type: Schema.Types.ObjectId, ref: "Room" },
+    // Bumped to invalidate every refresh token issued before the bump —
+    // this is what "reset user account" (force sign-out everywhere) uses.
+    // Access tokens (short-lived, 15m) aren't checked against this on every
+    // request, so a forced reset takes full effect within one access-token
+    // lifetime rather than instantly, in exchange for not needing a DB hit
+    // on every authenticated request.
+    tokenVersion: { type: Number, default: 0 },
     preferences: {
       theme: { type: String, enum: ["light", "dark", "system"], default: "system" },
       clipboardSyncEnabled: { type: Boolean, default: false },

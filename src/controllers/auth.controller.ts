@@ -90,10 +90,10 @@ async function createUserWithDefaultRoom(fields: {
   return { user, room };
 }
 
-function issueSession(userId: string, deviceId?: string) {
+function issueSession(userId: string, tokenVersion: number, deviceId?: string) {
   return {
-    accessToken: signAccessToken({ userId, deviceId }),
-    refreshToken: signRefreshToken({ userId, deviceId }),
+    accessToken: signAccessToken({ userId, deviceId, tokenVersion }),
+    refreshToken: signRefreshToken({ userId, deviceId, tokenVersion }),
   };
 }
 
@@ -115,7 +115,11 @@ export const register = asyncHandler(async (req: Request, res: Response) => {
   });
 
   const createdDevice = await issueDevice(user._id.toString(), room._id.toString(), device);
-  const session = issueSession(user._id.toString(), createdDevice?._id.toString());
+  const session = issueSession(
+    user._id.toString(),
+    (user.get("tokenVersion") as number | undefined) ?? 0,
+    createdDevice?._id.toString()
+  );
 
   res.status(201).json({
     success: true,
@@ -136,7 +140,11 @@ export const login = asyncHandler(async (req: Request, res: Response) => {
 
   const defaultRoomId = user.get("defaultRoomId")?.toString();
   const createdDevice = defaultRoomId ? await issueDevice(user._id.toString(), defaultRoomId, device) : undefined;
-  const session = issueSession(user._id.toString(), createdDevice?._id.toString());
+  const session = issueSession(
+    user._id.toString(),
+    (user.get("tokenVersion") as number | undefined) ?? 0,
+    createdDevice?._id.toString()
+  );
 
   res.json({ success: true, data: { user: toPublicUser(user), device: createdDevice, ...session } });
 });
@@ -152,7 +160,11 @@ export const guest = asyncHandler(async (req: Request, res: Response) => {
   });
 
   const createdDevice = await issueDevice(user._id.toString(), room._id.toString(), device);
-  const session = issueSession(user._id.toString(), createdDevice?._id.toString());
+  const session = issueSession(
+    user._id.toString(),
+    (user.get("tokenVersion") as number | undefined) ?? 0,
+    createdDevice?._id.toString()
+  );
 
   res.status(201).json({
     success: true,
@@ -201,7 +213,11 @@ export const google = asyncHandler(async (req: Request, res: Response) => {
 
   const defaultRoomId = user.get("defaultRoomId")?.toString();
   const createdDevice = defaultRoomId ? await issueDevice(user._id.toString(), defaultRoomId, device) : undefined;
-  const session = issueSession(user._id.toString(), createdDevice?._id.toString());
+  const session = issueSession(
+    user._id.toString(),
+    (user.get("tokenVersion") as number | undefined) ?? 0,
+    createdDevice?._id.toString()
+  );
 
   res.status(room ? 201 : 200).json({
     success: true,
@@ -222,7 +238,12 @@ export const refresh = asyncHandler(async (req: Request, res: Response) => {
   const user = await User.findById(payload.userId);
   if (!user) throw ApiError.unauthorized("Invalid refresh token");
 
-  const session = issueSession(user._id.toString(), payload.deviceId);
+  const currentVersion = (user.get("tokenVersion") as number | undefined) ?? 0;
+  if ((payload.tokenVersion ?? 0) !== currentVersion) {
+    throw ApiError.unauthorized("This session was signed out remotely. Please sign in again.");
+  }
+
+  const session = issueSession(user._id.toString(), currentVersion, payload.deviceId);
   res.json({ success: true, data: session });
 });
 
