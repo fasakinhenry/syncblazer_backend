@@ -38,6 +38,7 @@ export const env = {
   jwtRefreshExpiresIn: process.env.JWT_REFRESH_EXPIRES_IN ?? "30d",
 
   pairingSessionTtlSeconds: Number(process.env.PAIRING_SESSION_TTL_SECONDS ?? 120),
+  quickPairSessionTtlSeconds: Number(process.env.QUICK_PAIR_SESSION_TTL_SECONDS ?? 900),
 
   googleClientId: process.env.GOOGLE_CLIENT_ID,
 
