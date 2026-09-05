@@ -41,6 +41,9 @@ export const env = {
   quickPairSessionTtlSeconds: Number(process.env.QUICK_PAIR_SESSION_TTL_SECONDS ?? 900),
 
   googleClientId: process.env.GOOGLE_CLIENT_ID,
+  // Separate "Desktop app" type OAuth client (PKCE, system-browser flow) —
+  // optional, only set once the desktop app's Google sign-in is wired up.
+  googleDesktopClientId: process.env.GOOGLE_DESKTOP_CLIENT_ID,
 
   uploadDir: process.env.UPLOAD_DIR ?? "uploads",
   maxUploadSizeMb: Number(process.env.MAX_UPLOAD_SIZE_MB ?? 200),

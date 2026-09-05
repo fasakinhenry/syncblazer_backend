@@ -189,7 +189,14 @@ export const google = asyncHandler(async (req: Request, res: Response) => {
 
   let payload;
   try {
-    const ticket = await googleClient.verifyIdToken({ idToken, audience: env.googleClientId });
+    // Two separate OAuth clients can both mint valid tokens for this app: the
+    // website's "Web application" client, and the desktop app's "Desktop
+    // app" client (a PKCE flow through the system browser — see
+    // desktop/src-tauri/src/oauth.rs). Both are legitimate, so both audiences
+    // are accepted; googleDesktopClientId is optional so this keeps working
+    // even before the desktop client exists.
+    const audience = [env.googleClientId, env.googleDesktopClientId].filter((id): id is string => !!id);
+    const ticket = await googleClient.verifyIdToken({ idToken, audience });
     payload = ticket.getPayload();
   } catch {
     throw ApiError.unauthorized("That Google sign-in couldn't be verified");
