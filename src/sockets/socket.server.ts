@@ -1,6 +1,7 @@
 import type { Server as HttpServer } from "node:http";
 import { Server, type Socket } from "socket.io";
 import { env } from "@/config/env.ts";
+import { isAllowedOrigin } from "@/utils/corsOrigins.ts";
 import { verifyAccessToken } from "@/utils/jwt.ts";
 import { getClientIp } from "@/utils/getClientIp.ts";
 import { logger } from "@/utils/logger.ts";
@@ -27,7 +28,12 @@ export function getIO(): Server | null {
 
 export function initSocketServer(httpServer: HttpServer): Server {
   io = new Server(httpServer, {
-    cors: { origin: env.clientOrigin, credentials: true },
+    cors: {
+      origin: (origin, callback) => {
+        callback(null, isAllowedOrigin(origin));
+      },
+      credentials: true,
+    },
   });
 
   io.use((socket, next) => {

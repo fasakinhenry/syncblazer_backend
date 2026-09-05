@@ -5,6 +5,7 @@ import morgan from "morgan";
 import { env } from "@/config/env.ts";
 import { apiRouter } from "@/routes/index.ts";
 import { errorHandler, notFoundHandler } from "@/middleware/error.middleware.ts";
+import { isAllowedOrigin } from "@/utils/corsOrigins.ts";
 
 export function createApp() {
   const app = express();
@@ -13,18 +14,10 @@ export function createApp() {
   app.use(
     cors({
       origin: (origin, callback) => {
-        const allowedOrigins = new Set(env.clientOrigins);
-
-        if (!origin || allowedOrigins.has(origin)) {
+        if (isAllowedOrigin(origin)) {
           callback(null, true);
           return;
         }
-
-        if (origin.endsWith(".vercel.app") || origin.endsWith(".onrender.com") || origin === "http://localhost:5173") {
-          callback(null, true);
-          return;
-        }
-
         callback(new Error("Not allowed by CORS"));
       },
       credentials: true,
