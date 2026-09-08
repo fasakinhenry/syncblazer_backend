@@ -7,7 +7,17 @@ import { asyncHandler } from "@/utils/asyncHandler.ts";
 import { recordActivity } from "@/services/activity.service.ts";
 import { ActivityType } from "@/constants/index.ts";
 import { getIO } from "@/sockets/socket.server.ts";
-import { memberRoomIds, noteListFilter, noteReadFilter, noteWriteFilter } from "@/services/noteAccess.service.ts";
+import {
+  isGuestUser,
+  memberRoomIds,
+  noteListFilter,
+  noteReadFilter,
+  noteWriteFilter,
+} from "@/services/noteAccess.service.ts";
+
+// Machine-readable so the frontend can show a "create an account to
+// collaborate" prompt instead of a generic error toast.
+const GUEST_CANNOT_EDIT_SHARED = "guest_cannot_edit_shared";
 
 export const listNotes = asyncHandler(async (req: Request, res: Response) => {
   const { roomId, search } = req.query as { roomId?: string; search?: string };
@@ -56,6 +66,7 @@ export const createNote = asyncHandler(async (req: Request, res: Response) => {
 
 export const updateNote = asyncHandler(async (req: Request, res: Response) => {
   const roomIds = await memberRoomIds(req.userId!);
+  const isGuest = await isGuestUser(req.userId!);
   const patch = { ...req.body } as Record<string, unknown>;
 
   // Moving a note to a different room ("the selection of rooms" in the
@@ -76,11 +87,22 @@ export const updateNote = asyncHandler(async (req: Request, res: Response) => {
   }
 
   const note = await Note.findOneAndUpdate(
-    { _id: req.params.noteId, ...noteWriteFilter(req.userId!, roomIds) },
+    { _id: req.params.noteId, ...noteWriteFilter(req.userId!, roomIds, isGuest) },
     { $set: patch },
     { new: true }
   );
-  if (!note) throw ApiError.notFound("Note not found");
+  if (!note) {
+    // A guest who could read this note (it's shared with them) but not
+    // write to it is a distinct case from "not found at all" — worth a
+    // specific error so the frontend can prompt account creation.
+    if (isGuest) {
+      const readable = await Note.exists({ _id: req.params.noteId, ...noteReadFilter(req.userId!, roomIds) });
+      if (readable) {
+        throw new ApiError(403, "Create an account to collaborate on this note", { code: GUEST_CANNOT_EDIT_SHARED });
+      }
+    }
+    throw ApiError.notFound("Note not found");
+  }
 
   const newRoomId = note.roomId.toString();
   if (oldRoomId && oldRoomId !== newRoomId) {
@@ -176,8 +198,18 @@ export const openSharedNote = asyncHandler(async (req: Request, res: Response) =
   const note = await Note.findOne({ "publicShare.token": req.params.token, "publicShare.enabled": true });
   if (!note) throw ApiError.notFound("This shared note isn't available");
 
+  const isOwner = note.get("ownerId").toString() === req.userId;
+  const isGuest = isOwner ? false : await isGuestUser(req.userId!);
+  const linkAllowsEdit = note.get("publicShare")?.access === "edit";
+
   res.json({
     success: true,
-    data: { note, canEdit: note.get("publicShare")?.access === "edit" },
+    data: {
+      note,
+      canEdit: isOwner || (linkAllowsEdit && !isGuest),
+      // Lets the frontend distinguish "view-only because the owner set it
+      // that way" from "would be editable, but you need a real account."
+      blockedByGuest: !isOwner && linkAllowsEdit && isGuest,
+    },
   });
 });

@@ -10,6 +10,7 @@ import {
   refresh,
   register,
   updateMe,
+  upgradeGuestAccount,
 } from "@/controllers/auth.controller.ts";
 import { requireAuth } from "@/middleware/auth.middleware.ts";
 import { validate } from "@/middleware/validate.middleware.ts";
@@ -20,6 +21,7 @@ import {
   refreshSchema,
   registerSchema,
   updateMeSchema,
+  upgradeGuestSchema,
 } from "@/validators/auth.validators.ts";
 
 export const authRouter = Router();
@@ -33,4 +35,5 @@ authRouter.post("/refresh", validate({ body: refreshSchema }), refresh);
 authRouter.get("/me", requireAuth, me);
 authRouter.get("/me/stats", requireAuth, getMyStats);
 authRouter.patch("/me", requireAuth, validate({ body: updateMeSchema }), updateMe);
+authRouter.post("/upgrade", requireAuth, validate({ body: upgradeGuestSchema }), upgradeGuestAccount);
 authRouter.delete("/me", requireAuth, deleteAccount);

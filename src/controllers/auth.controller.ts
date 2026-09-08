@@ -338,6 +338,34 @@ export const updateMe = asyncHandler(async (req: Request, res: Response) => {
   res.json({ success: true, data: { user: toPublicUser(user) } });
 });
 
+// Converts a guest account into a real one in place — same _id, so every
+// room/note/device the guest already has stays attached, unlike sending
+// them to /register (which would create an unrelated second account and
+// abandon everything they'd done as a guest). This is the path a guest
+// blocked from editing a shared note (see noteAccess.service.ts) is
+// pointed at, and the only way that prompt could plausibly convert anyone.
+export const upgradeGuestAccount = asyncHandler(async (req: Request, res: Response) => {
+  const user = await User.findById(req.userId);
+  if (!user) throw ApiError.notFound("Account not found");
+  if (user.get("authProvider") !== "guest") throw ApiError.badRequest("This account has already been upgraded");
+
+  const { name, email, password } = req.body as { name?: string; email: string; password: string };
+  const existing = await User.findOne({ email });
+  if (existing) throw ApiError.conflict("An account with this email already exists");
+
+  const passwordHash = await (User as unknown as { hashPassword: (p: string) => Promise<string> }).hashPassword(
+    password
+  );
+  user.set("authProvider", "password");
+  user.set("email", email);
+  user.set("passwordHash", passwordHash);
+  if (name?.trim()) user.set("name", name.trim());
+  await user.save();
+
+  const session = issueSession(user._id.toString(), (user.get("tokenVersion") as number | undefined) ?? 0, req.deviceId);
+  res.json({ success: true, data: { user: toPublicUser(user), ...session } });
+});
+
 export const deleteMe = asyncHandler(async (req: Request, res: Response) => {
   const userId = req.userId;
 

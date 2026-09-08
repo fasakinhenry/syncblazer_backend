@@ -139,11 +139,13 @@ export function registerNoteCollabHandlers(socket: AuthedSocket) {
 
   socket.on("note:collab:join", async ({ noteId }: { noteId?: string }) => {
     if (!noteId || joined.has(noteId)) return;
-    const access = await getNoteAccess(userId, noteId);
-    if (!access) return;
 
-    const user = await User.findById(userId).select("name avatarUrl");
+    const user = await User.findById(userId).select("name avatarUrl authProvider");
     if (!user) return;
+    const isGuest = user.get("authProvider") === "guest";
+
+    const access = await getNoteAccess(userId, noteId, isGuest);
+    if (!access) return;
 
     joined.set(noteId, access);
     socket.join(`note:${noteId}`);
