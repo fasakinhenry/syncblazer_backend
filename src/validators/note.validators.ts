@@ -14,7 +14,12 @@ export const updateNoteSchema = z.object({
   title: z.string().min(1).max(200).optional(),
   content: z.string().max(CONTENT_MAX).optional(),
   visibility: z.enum(["private", "room"]).optional(),
+  // What "room" visibility grants room members — view only, or view+edit.
+  roomAccess: z.enum(["view", "edit"]).optional(),
   fontFamily: z.string().max(60).optional(),
+  // Moves the note to a different room the caller belongs to — owner-only,
+  // enforced in the controller (this schema just accepts the shape).
+  roomId: z.string().min(1).optional(),
 });
 
 export const noteIdParamSchema = z.object({
@@ -28,8 +33,21 @@ export const listNotesQuerySchema = z.object({
 
 export const shareNoteSchema = z.object({
   enabled: z.boolean(),
+  // Access level for the public link — "view" (default, safe) or "edit"
+  // (a real, anonymous, no-login editor on the public page). Omitted keeps
+  // whatever access level was already set.
+  access: z.enum(["view", "edit"]).optional(),
 });
 
 export const publicNoteTokenParamSchema = z.object({
   token: z.string().min(1),
+});
+
+// Anonymous edits via a public "edit" link — deliberately narrower than
+// updateNoteSchema: no visibility/roomAccess/roomId/sharing-settings fields
+// exist here at all, so there's nothing for a request to even attempt.
+export const updatePublicNoteSchema = z.object({
+  title: z.string().min(1).max(200).optional(),
+  content: z.string().max(CONTENT_MAX).optional(),
+  fontFamily: z.string().max(60).optional(),
 });

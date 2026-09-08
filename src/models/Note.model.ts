@@ -18,12 +18,20 @@ const noteSchema = new Schema(
     yjsState: { type: Buffer, required: false },
 
     // "private": only the owner can see/edit it, even if roomId is a shared room.
-    // "room": every member of roomId can view and edit it.
+    // "room": every member of roomId can at least view it — roomAccess below
+    // says whether they can edit it too.
     visibility: { type: String, enum: ["private", "room"], default: "private" },
+    // What "room" visibility actually grants room members. Only meaningful
+    // when visibility === "room"; ignored otherwise.
+    roomAccess: { type: String, enum: ["view", "edit"], default: "edit" },
 
     publicShare: {
       enabled: { type: Boolean, default: false },
-      // Unguessable id used in the public read-only URL; only set once shared.
+      // "view": the unauthenticated /n/:token page is read-only (default,
+      // safest). "edit": that same page becomes a real (anonymous, no
+      // login) editor — a deliberate trade-off the owner opts into.
+      access: { type: String, enum: ["view", "edit"], default: "view" },
+      // Unguessable id used in the public URL; only set once shared.
       token: { type: String, unique: true, sparse: true },
       viewCount: { type: Number, default: 0 },
       lastViewedAt: { type: Date },
