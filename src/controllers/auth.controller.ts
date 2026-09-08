@@ -366,6 +366,44 @@ export const upgradeGuestAccount = asyncHandler(async (req: Request, res: Respon
   res.json({ success: true, data: { user: toPublicUser(user), ...session } });
 });
 
+// Same idea as upgradeGuestAccount above, but linking a Google identity
+// instead of setting an email/password — same _id, everything already
+// attached stays attached. Refuses if that Google account is already tied
+// to a different, separate user rather than silently merging the two.
+export const upgradeGuestWithGoogle = asyncHandler(async (req: Request, res: Response) => {
+  if (!googleClient) throw ApiError.badRequest("Sign in with Google isn't configured on this server");
+
+  const user = await User.findById(req.userId);
+  if (!user) throw ApiError.notFound("Account not found");
+  if (user.get("authProvider") !== "guest") throw ApiError.badRequest("This account has already been upgraded");
+
+  const { idToken } = req.body as { idToken: string };
+  let payload;
+  try {
+    const audience = [env.googleClientId, env.googleDesktopClientId].filter((id): id is string => !!id);
+    const ticket = await googleClient.verifyIdToken({ idToken, audience });
+    payload = ticket.getPayload();
+  } catch {
+    throw ApiError.unauthorized("That Google sign-in couldn't be verified");
+  }
+  if (!payload?.email || !payload.sub) throw ApiError.unauthorized("That Google sign-in couldn't be verified");
+
+  const existing = await User.findOne({ $or: [{ googleId: payload.sub }, { email: payload.email }] });
+  if (existing) {
+    throw ApiError.conflict("An account already exists for that Google account — sign in with it instead");
+  }
+
+  user.set("authProvider", "google");
+  user.set("googleId", payload.sub);
+  user.set("email", payload.email);
+  if (payload.name) user.set("name", payload.name);
+  if (!user.get("avatarUrl") && payload.picture) user.set("avatarUrl", payload.picture);
+  await user.save();
+
+  const session = issueSession(user._id.toString(), (user.get("tokenVersion") as number | undefined) ?? 0, req.deviceId);
+  res.json({ success: true, data: { user: toPublicUser(user), ...session } });
+});
+
 export const deleteMe = asyncHandler(async (req: Request, res: Response) => {
   const userId = req.userId;
 

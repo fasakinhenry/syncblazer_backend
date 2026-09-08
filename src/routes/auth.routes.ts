@@ -11,6 +11,7 @@ import {
   register,
   updateMe,
   upgradeGuestAccount,
+  upgradeGuestWithGoogle,
 } from "@/controllers/auth.controller.ts";
 import { requireAuth } from "@/middleware/auth.middleware.ts";
 import { validate } from "@/middleware/validate.middleware.ts";
@@ -22,6 +23,7 @@ import {
   registerSchema,
   updateMeSchema,
   upgradeGuestSchema,
+  upgradeGuestWithGoogleSchema,
 } from "@/validators/auth.validators.ts";
 
 export const authRouter = Router();
@@ -36,4 +38,5 @@ authRouter.get("/me", requireAuth, me);
 authRouter.get("/me/stats", requireAuth, getMyStats);
 authRouter.patch("/me", requireAuth, validate({ body: updateMeSchema }), updateMe);
 authRouter.post("/upgrade", requireAuth, validate({ body: upgradeGuestSchema }), upgradeGuestAccount);
+authRouter.post("/upgrade/google", requireAuth, validate({ body: upgradeGuestWithGoogleSchema }), upgradeGuestWithGoogle);
 authRouter.delete("/me", requireAuth, deleteAccount);

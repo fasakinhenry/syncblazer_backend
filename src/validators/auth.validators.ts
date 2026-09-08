@@ -34,6 +34,10 @@ export const upgradeGuestSchema = z.object({
   password: z.string().min(8).max(128),
 });
 
+export const upgradeGuestWithGoogleSchema = z.object({
+  idToken: z.string().min(1),
+});
+
 export const refreshSchema = z.object({
   refreshToken: z.string().min(1),
 });
