@@ -11,6 +11,7 @@ import { linkPreviewRouter } from "@/routes/linkPreview.routes.ts";
 import { userRouter } from "@/routes/user.routes.ts";
 import { adminRouter } from "@/routes/admin.routes.ts";
 import { analyticsRouter } from "@/routes/analytics.routes.ts";
+import { chatRouter } from "@/routes/chat.routes.ts";
 
 export const apiRouter = Router();
 
@@ -30,3 +31,4 @@ apiRouter.use("/link-preview", linkPreviewRouter);
 apiRouter.use("/users", userRouter);
 apiRouter.use("/admin", adminRouter);
 apiRouter.use("/analytics", analyticsRouter);
+apiRouter.use("/chat", chatRouter);

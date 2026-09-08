@@ -34,6 +34,21 @@ export const renameDevice = asyncHandler(async (req: Request, res: Response) => 
   res.json({ success: true, data: { device } });
 });
 
+// Sets THIS session's device's own E2EE chat public key — never any other
+// device's, and never carries a private key (that never leaves the browser
+// that generated it, see roomChatCrypto.ts). Idempotent: re-opening chat on
+// the same device just re-uploads the same key.
+export const setMyDevicePublicKey = asyncHandler(async (req: Request, res: Response) => {
+  if (!req.deviceId) throw ApiError.badRequest("No device on this session");
+  const device = await Device.findOneAndUpdate(
+    { _id: req.deviceId, ownerId: req.userId },
+    { publicKey: req.body.publicKey },
+    { new: true }
+  );
+  if (!device) throw ApiError.notFound("Device not found");
+  res.json({ success: true, data: { deviceId: device._id } });
+});
+
 export const removeDevice = asyncHandler(async (req: Request, res: Response) => {
   const device = await Device.findOneAndDelete({ _id: req.params.deviceId, ownerId: req.userId });
   if (!device) throw ApiError.notFound("Device not found");

@@ -34,6 +34,10 @@ export const renameDeviceSchema = z.object({
   name: z.string().min(1).max(60),
 });
 
+export const setPublicKeySchema = z.object({
+  publicKey: z.string().min(1).max(2000),
+});
+
 export const deviceIdParamSchema = z.object({
   deviceId: z.string().min(1),
 });

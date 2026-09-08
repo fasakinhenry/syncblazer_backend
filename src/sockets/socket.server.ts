@@ -11,6 +11,7 @@ import { registerSignalingHandlers } from "@/sockets/signaling.ts";
 import { registerTransferHandlers } from "@/sockets/transfer.events.ts";
 import { registerQuickPairHandlers } from "@/sockets/quickPair.ts";
 import { registerNoteCollabHandlers } from "@/sockets/noteCollab.ts";
+import { registerRoomChatHandlers } from "@/sockets/roomChat.ts";
 import { recordDeviceConnection, forgetSocketConnection } from "@/sockets/presence.ts";
 import { DeviceStatus } from "@/constants/index.ts";
 
@@ -73,7 +74,7 @@ async function handleConnection(socket: AuthedSocket) {
     );
 
     const rooms = await Room.find({
-      $or: [{ ownerId: userId }, { deviceIds: deviceId }],
+      $or: [{ ownerId: userId }, { deviceIds: deviceId }, { memberIds: userId }],
     }).select("_id");
     for (const room of rooms) {
       socket.join(`room:${room._id.toString()}`);
@@ -96,11 +97,12 @@ async function handleConnection(socket: AuthedSocket) {
   registerTransferHandlers(socket);
   registerQuickPairHandlers(socket);
   registerNoteCollabHandlers(socket);
+  registerRoomChatHandlers(socket);
 
   socket.on("room:join", async (roomId: string) => {
     const room = await Room.findOne({
       _id: roomId,
-      $or: [{ ownerId: userId }, { deviceIds: deviceId }],
+      $or: [{ ownerId: userId }, { deviceIds: deviceId }, { memberIds: userId }],
     }).select("_id");
     if (room) socket.join(`room:${roomId}`);
   });

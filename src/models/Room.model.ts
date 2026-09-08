@@ -20,6 +20,14 @@ const roomSchema = new Schema(
     // TTL index below once expiresAt passes. Named rooms never set this.
     isInstant: { type: Boolean, default: false },
     expiresAt: { type: Date, expires: 0 },
+
+    // The current E2EE chat "epoch" — bumped by one whenever room membership
+    // changes, so a fresh symmetric key gets wrapped for every current
+    // member device and a removed member's device stops receiving new
+    // epochs. 0 means chat has never been initialized for this room. The
+    // server only ever hands out this counter; it never sees the actual key
+    // material (see RoomChatKeyEnvelope.model.ts).
+    chatEpoch: { type: Number, default: 0 },
   },
   { timestamps: true }
 );
