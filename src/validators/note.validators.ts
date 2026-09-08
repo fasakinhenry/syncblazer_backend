@@ -34,20 +34,11 @@ export const listNotesQuerySchema = z.object({
 export const shareNoteSchema = z.object({
   enabled: z.boolean(),
   // Access level for the public link — "view" (default, safe) or "edit"
-  // (a real, anonymous, no-login editor on the public page). Omitted keeps
-  // whatever access level was already set.
+  // (any authenticated user who opens the link can edit — never anonymous,
+  // no-login writes). Omitted keeps whatever access level was already set.
   access: z.enum(["view", "edit"]).optional(),
 });
 
 export const publicNoteTokenParamSchema = z.object({
   token: z.string().min(1),
-});
-
-// Anonymous edits via a public "edit" link — deliberately narrower than
-// updateNoteSchema: no visibility/roomAccess/roomId/sharing-settings fields
-// exist here at all, so there's nothing for a request to even attempt.
-export const updatePublicNoteSchema = z.object({
-  title: z.string().min(1).max(200).optional(),
-  content: z.string().max(CONTENT_MAX).optional(),
-  fontFamily: z.string().max(60).optional(),
 });

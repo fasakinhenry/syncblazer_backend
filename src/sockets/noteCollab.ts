@@ -1,7 +1,9 @@
 import * as Y from "yjs";
 import { Note } from "@/models/Note.model.ts";
-import { canAccessNote } from "@/services/noteAccess.service.ts";
+import { User } from "@/models/User.model.ts";
+import { getNoteAccess } from "@/services/noteAccess.service.ts";
 import { logger } from "@/utils/logger.ts";
+import { getIO } from "@/sockets/socket.server.ts";
 import type { AuthedSocket } from "@/sockets/socket.server.ts";
 
 // How long to wait after the last edit before writing the Yjs state to
@@ -12,6 +14,9 @@ const PERSIST_DEBOUNCE_MS = 5000;
 // the same live doc rather than forcing a re-hydrate from Mongo — give it
 // this long after the last subscriber leaves before actually evicting.
 const EVICT_GRACE_MS = 30_000;
+// The UI only ever shows the first 10 watcher avatars — no point tracking
+// or broadcasting an unbounded roster for a note with a very large room.
+const MAX_WATCHERS = 25;
 
 interface NoteDocEntry {
   doc: Y.Doc;
@@ -20,10 +25,21 @@ interface NoteDocEntry {
   evictTimer: ReturnType<typeof setTimeout> | null;
 }
 
+interface WatcherInfo {
+  userId: string;
+  name: string;
+  avatarUrl?: string;
+  canEdit: boolean;
+}
+
 // One live Y.Doc per actively-open note, shared across every socket
 // subscribed to it — the server is the authority a brand-new joiner
 // syncs against, not just a blind relay between whoever's already there.
 const docs = new Map<string, NoteDocEntry>();
+// Who currently has each note open — every reader AND editor, not just
+// collaborators pushing edits. Keyed by userId with a tab/socket count so
+// closing one of several open tabs doesn't drop them from the list.
+const watchers = new Map<string, Map<string, WatcherInfo & { sockets: number }>>();
 
 async function loadEntry(noteId: string): Promise<NoteDocEntry> {
   const existing = docs.get(noteId);
@@ -65,24 +81,80 @@ function schedulePersist(noteId: string, entry: NoteDocEntry) {
   }, PERSIST_DEBOUNCE_MS);
 }
 
+function broadcastWatchers(noteId: string) {
+  const roster = watchers.get(noteId);
+  const list: WatcherInfo[] = roster ? [...roster.values()].map(({ sockets: _sockets, ...info }) => info) : [];
+  getIO()
+    ?.to(`note:${noteId}`)
+    .emit("note:watchers", { noteId, watchers: list.slice(0, MAX_WATCHERS), total: list.length });
+}
+
+function addWatcher(noteId: string, info: WatcherInfo) {
+  let roster = watchers.get(noteId);
+  if (!roster) {
+    roster = new Map();
+    watchers.set(noteId, roster);
+  }
+  const existing = roster.get(info.userId);
+  if (existing) {
+    existing.sockets += 1;
+    existing.canEdit = existing.canEdit || info.canEdit; // most-permissive across this user's own tabs
+  } else {
+    roster.set(info.userId, { ...info, sockets: 1 });
+  }
+  broadcastWatchers(noteId);
+}
+
+function removeWatcher(noteId: string, userId: string) {
+  const roster = watchers.get(noteId);
+  if (!roster) return;
+  const existing = roster.get(userId);
+  if (!existing) return;
+  existing.sockets -= 1;
+  if (existing.sockets <= 0) {
+    roster.delete(userId);
+    if (roster.size === 0) watchers.delete(noteId);
+  }
+  broadcastWatchers(noteId);
+}
+
 /**
- * Relays and persists the live Yjs layer for collaborative note editing —
- * binary document updates and ephemeral cursor/presence ("awareness")
- * data, scoped per note via a `note:<noteId>` socket room. This is purely
- * additive: the existing REST `PATCH /notes/:id` + markdown `content`
- * field (note.controller.ts) stays the durability backbone for everything
- * that isn't live co-editing — offline queueing, search, export, the
- * public share page. This layer only carries the real-time experience.
+ * Relays and persists the live layer for collaborative note editing: who's
+ * currently watching a note (any reader, shown as avatars below the note),
+ * and — for those with write access — the live Yjs document + cursor
+ * ("awareness") data, scoped per note via a `note:<noteId>` socket room.
+ * This is purely additive: the existing REST `PATCH /notes/:id` + markdown
+ * `content` field (note.controller.ts) stays the durability backbone for
+ * everything that isn't live co-editing — offline queueing, search,
+ * export, the public share page. This layer only carries the real-time
+ * experience, and only to sockets that already passed an auth check
+ * (there's no anonymous socket connection — see socket.server.ts).
  */
 export function registerNoteCollabHandlers(socket: AuthedSocket) {
   const { userId } = socket.data;
-  // Every note this socket is actively subscribed to, so disconnect can
-  // clean each one up without requiring the client to explicitly leave first.
-  const joinedNoteIds = new Set<string>();
+  // Every note this socket is actively subscribed to, and whether ITS
+  // access was write-level — re-checked independently on every update so a
+  // stale/forged event from a since-downgraded viewer can't sneak through.
+  const joined = new Map<string, { canEdit: boolean }>();
 
   socket.on("note:collab:join", async ({ noteId }: { noteId?: string }) => {
-    if (!noteId || joinedNoteIds.has(noteId)) return;
-    if (!(await canAccessNote(userId, noteId))) return;
+    if (!noteId || joined.has(noteId)) return;
+    const access = await getNoteAccess(userId, noteId);
+    if (!access) return;
+
+    const user = await User.findById(userId).select("name avatarUrl");
+    if (!user) return;
+
+    joined.set(noteId, access);
+    socket.join(`note:${noteId}`);
+    addWatcher(noteId, {
+      userId,
+      name: user.get("name") ?? "Someone",
+      avatarUrl: user.get("avatarUrl") ?? undefined,
+      canEdit: access.canEdit,
+    });
+
+    if (!access.canEdit) return; // read-only watchers stop here — no Yjs doc, no push access
 
     const entry = await loadEntry(noteId);
     if (entry.evictTimer) {
@@ -90,14 +162,12 @@ export function registerNoteCollabHandlers(socket: AuthedSocket) {
       entry.evictTimer = null;
     }
     entry.subscriberCount += 1;
-    joinedNoteIds.add(noteId);
-    socket.join(`note:${noteId}`);
 
     socket.emit("note:collab:state", { noteId, state: Buffer.from(Y.encodeStateAsUpdate(entry.doc)) });
   });
 
   socket.on("note:collab:update", ({ noteId, update }: { noteId?: string; update?: Uint8Array }) => {
-    if (!noteId || !update || !joinedNoteIds.has(noteId)) return;
+    if (!noteId || !update || !joined.get(noteId)?.canEdit) return;
     const entry = docs.get(noteId);
     if (!entry) return;
 
@@ -114,20 +184,25 @@ export function registerNoteCollabHandlers(socket: AuthedSocket) {
   // Cursor/selection/presence — small, frequent, and never persisted; a
   // pure relay to everyone else currently in the note.
   socket.on("note:collab:awareness", ({ noteId, update }: { noteId?: string; update?: Uint8Array }) => {
-    if (!noteId || !update || !joinedNoteIds.has(noteId)) return;
+    if (!noteId || !update || !joined.get(noteId)?.canEdit) return;
     socket.to(`note:${noteId}`).emit("note:collab:awareness", { noteId, update });
   });
 
   const leave = (noteId: string) => {
-    if (!joinedNoteIds.delete(noteId)) return;
+    const access = joined.get(noteId);
+    if (!access) return;
+    joined.delete(noteId);
     socket.leave(`note:${noteId}`);
+    removeWatcher(noteId, userId);
+
+    if (!access.canEdit) return;
     const entry = docs.get(noteId);
     if (!entry) return;
 
     entry.subscriberCount = Math.max(0, entry.subscriberCount - 1);
     if (entry.subscriberCount > 0) return;
 
-    // Nobody's left watching this note — flush immediately (nothing left to
+    // Nobody's left editing this note — flush immediately (nothing left to
     // reset the debounce) and schedule eviction after a grace window.
     if (entry.persistTimer) {
       clearTimeout(entry.persistTimer);
@@ -141,6 +216,6 @@ export function registerNoteCollabHandlers(socket: AuthedSocket) {
     if (noteId) leave(noteId);
   });
   socket.on("disconnect", () => {
-    for (const noteId of [...joinedNoteIds]) leave(noteId);
+    for (const noteId of [...joined.keys()]) leave(noteId);
   });
 }

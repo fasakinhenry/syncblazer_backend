@@ -7,13 +7,13 @@ import { asyncHandler } from "@/utils/asyncHandler.ts";
 import { recordActivity } from "@/services/activity.service.ts";
 import { ActivityType } from "@/constants/index.ts";
 import { getIO } from "@/sockets/socket.server.ts";
-import { memberRoomIds, noteReadFilter, noteWriteFilter } from "@/services/noteAccess.service.ts";
+import { memberRoomIds, noteListFilter, noteReadFilter, noteWriteFilter } from "@/services/noteAccess.service.ts";
 
 export const listNotes = asyncHandler(async (req: Request, res: Response) => {
   const { roomId, search } = req.query as { roomId?: string; search?: string };
   const roomIds = await memberRoomIds(req.userId!);
 
-  const filter: Record<string, unknown> = noteReadFilter(req.userId!, roomIds);
+  const filter: Record<string, unknown> = noteListFilter(req.userId!, roomIds);
   if (roomId) filter.roomId = roomId;
   if (search) filter.$text = { $search: search };
 
@@ -164,41 +164,20 @@ export const getPublicNote = asyncHandler(async (req: Request, res: Response) =>
   });
 });
 
-// Public, unauthenticated, rate-limited at the route level (see
-// note.routes.ts) — the deliberate anonymous-editing surface: only reachable
-// with the exact unguessable token, only does anything when the owner
-// explicitly turned on publicShare.access: "edit", and only ever touches
-// title/content/fontFamily — never visibility, sharing settings, or roomId.
-export const updatePublicNote = asyncHandler(async (req: Request, res: Response) => {
-  const { title, content, fontFamily } = req.body as { title?: string; content?: string; fontFamily?: string };
-  const patch: Record<string, unknown> = {};
-  if (title !== undefined) patch.title = title;
-  if (content !== undefined) patch.content = content;
-  if (fontFamily !== undefined) patch.fontFamily = fontFamily;
-
-  // Full document (not a projected subset) for the broadcast below — other
-  // clients watching this note's room expect the same complete shape
-  // updateNote/shareNote already send them, not a partial one that would
-  // clobber fields like ownerId/visibility/publicShare in their local state.
-  const note = await Note.findOneAndUpdate(
-    { "publicShare.token": req.params.token, "publicShare.enabled": true, "publicShare.access": "edit" },
-    { $set: patch },
-    { new: true }
-  );
-  if (!note) throw ApiError.notFound("This shared note isn't available for editing");
-
-  getIO()?.to(`room:${note.roomId.toString()}`).emit("note:updated", { note });
+// Authenticated: resolves a public share token to the REAL note for a
+// logged-in visitor, so they can be dropped into the actual editor instead
+// of the read-only anonymous page — with real edit access (via the socket
+// collab layer and the normal PATCH /notes/:noteId, both of which already
+// grant write access for an enabled edit-level public share to ANY
+// authenticated user, not just room members) rather than anonymous,
+// unauthenticated writes. Possessing the token is itself the grant, same
+// as the anonymous route — no room membership required.
+export const openSharedNote = asyncHandler(async (req: Request, res: Response) => {
+  const note = await Note.findOne({ "publicShare.token": req.params.token, "publicShare.enabled": true });
+  if (!note) throw ApiError.notFound("This shared note isn't available");
 
   res.json({
     success: true,
-    data: {
-      note: {
-        title: note.get("title"),
-        content: note.get("content"),
-        fontFamily: note.get("fontFamily"),
-        updatedAt: note.get("updatedAt"),
-        access: "edit" as const,
-      },
-    },
+    data: { note, canEdit: note.get("publicShare")?.access === "edit" },
   });
 });
