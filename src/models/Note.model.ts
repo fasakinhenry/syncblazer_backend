@@ -10,6 +10,13 @@ const noteSchema = new Schema(
     content: { type: String, default: "" },
     fontFamily: { type: String, default: "Inter" },
 
+    // Encoded Yjs document state for live collaborative editing (see
+    // sockets/noteCollab.ts). Opaque binary — the server never parses it,
+    // only relays/persists it; `content` above stays the source of truth
+    // for everything that isn't live co-editing (search, export, the public
+    // share page). Undefined until a note's first collaborative session.
+    yjsState: { type: Buffer, required: false },
+
     // "private": only the owner can see/edit it, even if roomId is a shared room.
     // "room": every member of roomId can view and edit it.
     visibility: { type: String, enum: ["private", "room"], default: "private" },

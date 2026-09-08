@@ -25,6 +25,7 @@
     "nanoid": "^5.0.7",
     "resend": "^6.25.0",
     "socket.io": "^4.7.5",
+    "yjs": "^13.6.32",
     "zod": "^3.23.8"
   },
   "devDependencies": {
