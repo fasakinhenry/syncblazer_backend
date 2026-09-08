@@ -28,6 +28,7 @@ interface NoteDocEntry {
 interface WatcherInfo {
   userId: string;
   name: string;
+  email?: string;
   avatarUrl?: string;
   canEdit: boolean;
 }
@@ -140,7 +141,7 @@ export function registerNoteCollabHandlers(socket: AuthedSocket) {
   socket.on("note:collab:join", async ({ noteId }: { noteId?: string }) => {
     if (!noteId || joined.has(noteId)) return;
 
-    const user = await User.findById(userId).select("name avatarUrl authProvider");
+    const user = await User.findById(userId).select("name email avatarUrl authProvider");
     if (!user) return;
     const isGuest = user.get("authProvider") === "guest";
 
@@ -152,6 +153,7 @@ export function registerNoteCollabHandlers(socket: AuthedSocket) {
     addWatcher(noteId, {
       userId,
       name: user.get("name") ?? "Someone",
+      email: user.get("email") ?? undefined,
       avatarUrl: user.get("avatarUrl") ?? undefined,
       canEdit: access.canEdit,
     });
