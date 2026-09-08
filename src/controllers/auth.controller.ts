@@ -1,4 +1,5 @@
 import type { Request, Response } from "express";
+import { Types } from "mongoose";
 import { OAuth2Client } from "google-auth-library";
 import { User } from "@/models/User.model.ts";
 import { Room } from "@/models/Room.model.ts";
@@ -6,13 +7,17 @@ import { Device } from "@/models/Device.model.ts";
 import { Note } from "@/models/Note.model.ts";
 import { Transfer } from "@/models/Transfer.model.ts";
 import { Activity } from "@/models/Activity.model.ts";
-import { RoomType, DeviceStatus } from "@/constants/index.ts";
+import { RoomInvite } from "@/models/RoomInvite.model.ts";
+import { RoomType, DeviceStatus, ActivityType } from "@/constants/index.ts";
 import { ApiError } from "@/utils/ApiError.ts";
 import { asyncHandler } from "@/utils/asyncHandler.ts";
 import { signAccessToken, signRefreshToken, verifyRefreshToken } from "@/utils/jwt.ts";
 import { generateAvatarUrl, generateGuestName } from "@/utils/guestIdentity.ts";
 import { dailyCounts } from "@/utils/dailyCounts.ts";
 import { env } from "@/config/env.ts";
+import { notifyLoginNotice, notifyWelcome } from "@/services/notifications.service.ts";
+import { recordActivity } from "@/services/activity.service.ts";
+import { getIO } from "@/sockets/socket.server.ts";
 
 const googleClient = env.googleClientId ? new OAuth2Client(env.googleClientId) : null;
 
@@ -104,8 +109,34 @@ function touchLastLogin(userId: string) {
   User.updateOne({ _id: userId }, { $set: { lastLoginAt: new Date() } }).catch(() => undefined);
 }
 
+// Best-effort — a bad/expired/already-used token, or one issued for a
+// different email, just means registration proceeds normally without
+// joining a room. Never a reason to fail signup itself.
+async function applyRoomInvite(userId: string, userName: string, email: string, inviteToken?: string): Promise<void> {
+  if (!inviteToken) return;
+  const invite = await RoomInvite.findOne({ token: inviteToken, status: "pending" });
+  if (!invite || invite.get("invitedEmail") !== email.toLowerCase()) return;
+
+  const room = await Room.findById(invite.get("roomId"));
+  if (!room) return;
+
+  room.memberIds.push(new Types.ObjectId(userId));
+  await room.save();
+  invite.set("status", "accepted");
+  await invite.save();
+
+  await recordActivity({
+    ownerId: userId,
+    roomId: room._id.toString(),
+    type: ActivityType.MEMBER_JOINED,
+    message: `${userName} joined the room`,
+    metadata: { userId },
+  });
+  getIO()?.to(`room:${room._id.toString()}`).emit("room:member-joined", { roomId: room._id });
+}
+
 export const register = asyncHandler(async (req: Request, res: Response) => {
-  const { name, email, password, device } = req.body;
+  const { name, email, password, device, inviteToken } = req.body;
 
   const existing = await User.findOne({ email });
   if (existing) throw ApiError.conflict("An account with this email already exists");
@@ -120,6 +151,7 @@ export const register = asyncHandler(async (req: Request, res: Response) => {
     authProvider: "password",
     avatarUrl: generateAvatarUrl(email),
   });
+  await applyRoomInvite(user._id.toString(), name, email, inviteToken);
 
   const createdDevice = await issueDevice(user._id.toString(), room._id.toString(), device);
   const session = issueSession(
@@ -128,6 +160,7 @@ export const register = asyncHandler(async (req: Request, res: Response) => {
     createdDevice?._id.toString()
   );
   touchLastLogin(user._id.toString());
+  void notifyWelcome({ email: user.get("email"), name: user.get("name") });
 
   res.status(201).json({
     success: true,
@@ -154,6 +187,7 @@ export const login = asyncHandler(async (req: Request, res: Response) => {
     createdDevice?._id.toString()
   );
   touchLastLogin(user._id.toString());
+  void notifyLoginNotice({ email: user.get("email"), name: user.get("name") }, createdDevice?.get("name"));
 
   res.json({ success: true, data: { user: toPublicUser(user), device: createdDevice, ...session } });
 });
@@ -236,6 +270,8 @@ export const google = asyncHandler(async (req: Request, res: Response) => {
     createdDevice?._id.toString()
   );
   touchLastLogin(user._id.toString());
+  if (room) void notifyWelcome({ email: user.get("email"), name: user.get("name") });
+  else void notifyLoginNotice({ email: user.get("email"), name: user.get("name") }, createdDevice?.get("name"));
 
   res.status(room ? 201 : 200).json({
     success: true,

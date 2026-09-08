@@ -20,6 +20,10 @@ export const registerSchema = z.object({
   email: z.string().email(),
   password: z.string().min(8).max(128),
   device: deviceInfoSchema.optional(),
+  // From a room-invite email's signup link (?invite=<token>) — auto-joins
+  // the inviting room once the account exists, if the token is valid and
+  // was issued for this exact email.
+  inviteToken: z.string().min(1).optional(),
 });
 
 export const loginSchema = z.object({

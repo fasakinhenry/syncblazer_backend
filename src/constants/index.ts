@@ -64,5 +64,7 @@ export const ActivityType = {
   DEVICE_CONNECTED: "device_connected",
   DEVICE_REMOVED: "device_removed",
   MEMBER_JOINED: "member_joined",
+  MEMBER_REMOVED: "member_removed",
+  ROOM_CREATED: "room_created",
 } as const;
 export type ActivityType = (typeof ActivityType)[keyof typeof ActivityType];

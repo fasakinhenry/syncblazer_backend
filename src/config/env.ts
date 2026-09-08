@@ -58,5 +58,10 @@ export const env = {
   resendApiKey: process.env.RESEND_API_KEY,
   emailFrom: process.env.EMAIL_FROM ?? "SyncBlaze <onboarding@resend.dev>",
 
+  // Base URL for links inside emails (open this room, view this note) —
+  // falls back to the primary client origin so this doesn't need its own
+  // env var in most deployments (they're the same host).
+  frontendUrl: process.env.FRONTEND_URL ?? process.env.CLIENT_ORIGIN ?? "http://localhost:5173",
+
   isProduction: process.env.NODE_ENV === "production",
 };

@@ -14,6 +14,7 @@ import {
   noteReadFilter,
   noteWriteFilter,
 } from "@/services/noteAccess.service.ts";
+import { notifyNoteDeleted, notifyNoteShared } from "@/services/notifications.service.ts";
 
 // Machine-readable so the frontend can show a "create an account to
 // collaborate" prompt instead of a generic error toast.
@@ -86,6 +87,15 @@ export const updateNote = asyncHandler(async (req: Request, res: Response) => {
     oldRoomId = existing.get("roomId").toString();
   }
 
+  // Only worth an email the moment a note actually BECOMES room-shared, not
+  // on every subsequent edit to an already-shared note — so the "before"
+  // visibility only needs fetching when that's the field being changed.
+  let wasVisibilityRoom = false;
+  if (patch.visibility === "room") {
+    const existing = await Note.findById(req.params.noteId).select("visibility");
+    wasVisibilityRoom = existing?.get("visibility") === "room";
+  }
+
   const note = await Note.findOneAndUpdate(
     { _id: req.params.noteId, ...noteWriteFilter(req.userId!, roomIds, isGuest) },
     { $set: patch },
@@ -114,6 +124,11 @@ export const updateNote = asyncHandler(async (req: Request, res: Response) => {
     getIO()?.to(`room:${newRoomId}`).emit("note:updated", { note });
   }
 
+  if (patch.visibility === "room" && !wasVisibilityRoom) {
+    const sharer = await User.findById(req.userId).select("name");
+    if (sharer) void notifyNoteShared(note, req.userId!, sharer.get("name"));
+  }
+
   res.json({ success: true, data: { note } });
 });
 
@@ -122,6 +137,8 @@ export const deleteNote = asyncHandler(async (req: Request, res: Response) => {
   // editing along with you can't wipe it out from under you.
   const note = await Note.findOneAndDelete({ _id: req.params.noteId, ownerId: req.userId });
   if (!note) throw ApiError.notFound("Note not found");
+
+  if (note.get("visibility") === "room") void notifyNoteDeleted(note, req.userId!);
 
   getIO()?.to(`room:${note.roomId.toString()}`).emit("note:deleted", { noteId: note._id });
 

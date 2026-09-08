@@ -23,3 +23,12 @@ export const joinRoomSchema = z.object({
     .max(80)
     .transform((v) => v.trim().toLowerCase()),
 });
+
+export const inviteToRoomSchema = z.object({
+  email: z.string().email(),
+});
+
+export const roomMemberParamSchema = z.object({
+  roomId: z.string().min(1),
+  userId: z.string().min(1),
+});

@@ -1,12 +1,16 @@
 import type { Request, Response } from "express";
+import { randomBytes } from "node:crypto";
 import { Types } from "mongoose";
 import { Room } from "@/models/Room.model.ts";
 import { Activity } from "@/models/Activity.model.ts";
+import { Device } from "@/models/Device.model.ts";
+import { RoomInvite } from "@/models/RoomInvite.model.ts";
 import { User } from "@/models/User.model.ts";
 import { ApiError } from "@/utils/ApiError.ts";
 import { asyncHandler } from "@/utils/asyncHandler.ts";
 import { generateUniqueRoomCode } from "@/utils/roomName.ts";
 import { recordActivity } from "@/services/activity.service.ts";
+import { notifyRoomCreated, notifyRoomInvite, notifyRoomMemberAdded } from "@/services/notifications.service.ts";
 import { ActivityType, RoomType } from "@/constants/index.ts";
 import { getIO } from "@/sockets/socket.server.ts";
 import { areDevicesOnSameNetwork } from "@/sockets/presence.ts";
@@ -64,6 +68,18 @@ export const createRoom = asyncHandler(async (req: Request, res: Response) => {
     code,
     deviceIds: req.deviceId ? [req.deviceId] : [],
   });
+
+  const user = await User.findById(req.userId).select("name email");
+  if (user) void notifyRoomCreated({ email: user.get("email"), name: user.get("name") }, room);
+
+  await recordActivity({
+    ownerId: req.userId!,
+    roomId: room._id.toString(),
+    type: ActivityType.ROOM_CREATED,
+    message: `Room "${room.name}" created`,
+    metadata: { roomId: room._id },
+  });
+
   res.status(201).json({ success: true, data: { room } });
 });
 
@@ -112,6 +128,96 @@ export const joinRoom = asyncHandler(async (req: Request, res: Response) => {
   getIO()?.to(`room:${room._id.toString()}`).emit("room:member-joined", { roomId: room._id });
 
   res.status(200).json({ success: true, data: { room } });
+});
+
+// Owner-only. If the invited email already belongs to an account, they're
+// added directly (no waiting on them to click anything) and get the
+// "added to a room" email; otherwise a RoomInvite is created and they get a
+// signup link that auto-joins the room once they register (auth.controller.ts).
+export const inviteToRoom = asyncHandler(async (req: Request, res: Response) => {
+  const room = await Room.findOne({ _id: req.params.roomId, ownerId: req.userId });
+  if (!room) throw ApiError.notFound("Room not found");
+
+  const email = (req.body.email as string).trim().toLowerCase();
+  const inviter = await User.findById(req.userId).select("name");
+  const inviterName = inviter?.get("name") ?? "Someone";
+
+  const existingUser = await User.findOne({ email });
+  if (existingUser) {
+    const alreadyMember =
+      room.ownerId.toString() === existingUser._id.toString() ||
+      room.memberIds.some((id) => id.toString() === existingUser._id.toString());
+    if (alreadyMember) throw ApiError.conflict("That person is already in this room");
+
+    room.memberIds.push(existingUser._id);
+    await room.save();
+
+    await recordActivity({
+      ownerId: req.userId!,
+      roomId: room._id.toString(),
+      type: ActivityType.MEMBER_JOINED,
+      message: `${existingUser.get("name")} was added to the room`,
+      metadata: { userId: existingUser._id },
+    });
+    getIO()?.to(`room:${room._id.toString()}`).emit("room:member-joined", { roomId: room._id });
+
+    void notifyRoomMemberAdded({ email: existingUser.get("email"), name: existingUser.get("name") }, room, inviterName);
+
+    res.json({ success: true, data: { status: "added" } });
+    return;
+  }
+
+  // No account with that email yet — reuse a still-pending invite instead
+  // of stacking up duplicates if the owner invites the same address twice.
+  let invite = await RoomInvite.findOne({ roomId: room._id, invitedEmail: email, status: "pending" });
+  if (!invite) {
+    invite = await RoomInvite.create({
+      roomId: room._id,
+      invitedEmail: email,
+      invitedBy: req.userId,
+      token: randomBytes(16).toString("hex"),
+    });
+  }
+
+  void notifyRoomInvite(email, room.get("name"), inviterName, invite.get("token"));
+
+  res.json({ success: true, data: { status: "invited" } });
+});
+
+// Owner-only. Also drops the removed member's own devices from the room's
+// device list — otherwise they'd keep showing up there despite no longer
+// having access to anything else in the room.
+export const removeMember = asyncHandler(async (req: Request, res: Response) => {
+  const room = await Room.findOne({ _id: req.params.roomId, ownerId: req.userId });
+  if (!room) throw ApiError.notFound("Room not found");
+
+  const targetId = req.params.userId;
+  if (targetId === req.userId) throw ApiError.badRequest("You can't remove yourself — delete the room instead");
+
+  const before = room.memberIds.length;
+  room.memberIds = room.memberIds.filter((id) => id.toString() !== targetId) as typeof room.memberIds;
+  if (room.memberIds.length === before) throw ApiError.notFound("That person isn't a member of this room");
+
+  const theirDeviceIds = new Set((await Device.find({ ownerId: targetId }).select("_id")).map((d) => d._id.toString()));
+  room.deviceIds = room.deviceIds.filter((id) => !theirDeviceIds.has(id.toString())) as typeof room.deviceIds;
+
+  await room.save();
+
+  const removedUser = await User.findById(targetId).select("name");
+  await recordActivity({
+    ownerId: req.userId!,
+    roomId: room._id.toString(),
+    type: ActivityType.MEMBER_REMOVED,
+    message: `${removedUser?.get("name") ?? "Someone"} was removed from the room`,
+    metadata: { userId: targetId },
+  });
+
+  getIO()?.to(`room:${room._id.toString()}`).emit("room:member-removed", { roomId: room._id, userId: targetId });
+  // The removed member's own client(s) are still subscribed to this room's
+  // socket channel until they reconnect otherwise — nudge them directly.
+  getIO()?.to(`user:${targetId}`).emit("room:removed-from", { roomId: room._id });
+
+  res.json({ success: true, data: { roomId: room._id, userId: targetId } });
 });
 
 export const updateRoom = asyncHandler(async (req: Request, res: Response) => {
