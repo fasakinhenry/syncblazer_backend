@@ -83,6 +83,14 @@ export function registerRoomChatHandlers(socket: AuthedSocket) {
           iv,
           createdAt: saved.get("createdAt"),
         });
+
+      // A separate, lighter signal (no ciphertext) to everyone who's on
+      // this room's page at all, not just those with chat actually open —
+      // lets an unread indicator show up without needing to join the
+      // ciphertext-carrying chat:<roomId> channel first.
+      getIO()
+        ?.to(`room:${roomId}`)
+        .emit("chat:activity", { roomId, senderId: userId, createdAt: saved.get("createdAt") });
     }
   );
 

@@ -168,6 +168,24 @@ export const listMessages = asyncHandler(async (req: Request, res: Response) => 
   });
 });
 
+// A cheap peek used only to compute an unread badge outside the chat
+// panel itself (e.g. on RoomDetailPage) — deliberately returns nothing
+// about content, just enough to compare against the viewer's locally
+// stored "last read" timestamp.
+export const getLatestMessage = asyncHandler(async (req: Request, res: Response) => {
+  const roomId = req.params.roomId;
+  await requireMembership(req.userId!, roomId);
+
+  const latest = await Message.findOne({ roomId }).sort({ createdAt: -1 }).select("createdAt senderId").lean();
+  res.json({
+    success: true,
+    data: {
+      createdAt: latest?.createdAt?.toISOString() ?? null,
+      senderId: latest?.senderId?.toString() ?? null,
+    },
+  });
+});
+
 // Attachments are already AES-GCM encrypted client-side before they ever
 // reach here (see roomChatCrypto.ts) — the server stores and serves opaque
 // bytes, same as it stores opaque message ciphertext. Auth-gated (unlike

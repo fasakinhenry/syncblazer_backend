@@ -3,6 +3,7 @@ import multer from "multer";
 import {
   getChatDevices,
   getChatEpoch,
+  getLatestMessage,
   getMyKeyEnvelopes,
   listMessages,
   rotateChatEpoch,
@@ -40,3 +41,4 @@ chatRouter.get(
   validate({ params: chatRoomParamSchema, query: chatMessagesQuerySchema }),
   listMessages
 );
+chatRouter.get("/:roomId/latest", validate({ params: chatRoomParamSchema }), getLatestMessage);
