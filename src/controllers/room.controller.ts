@@ -1,7 +1,7 @@
 import type { Request, Response } from "express";
 import { randomBytes } from "node:crypto";
 import { Types } from "mongoose";
-import { Room } from "@/models/Room.model.ts";
+import { Room, type RoomDocument } from "@/models/Room.model.ts";
 import { Activity } from "@/models/Activity.model.ts";
 import { Device } from "@/models/Device.model.ts";
 import { RoomInvite } from "@/models/RoomInvite.model.ts";
@@ -184,24 +184,31 @@ export const inviteToRoom = asyncHandler(async (req: Request, res: Response) => 
   res.json({ success: true, data: { status: "invited" } });
 });
 
-// Owner-only. Also drops the removed member's own devices from the room's
-// device list — otherwise they'd keep showing up there despite no longer
-// having access to anything else in the room.
+// Shared by removeMember (owner drops someone else) and leaveRoom (you
+// drop yourself) — also clears the departing member's own devices from
+// the room's device list, since they'd otherwise keep showing up there
+// despite no longer having access to anything else in the room.
+async function dropMemberFromRoom(room: RoomDocument, targetId: string): Promise<boolean> {
+  const before = room.memberIds.length;
+  room.memberIds = room.memberIds.filter((id) => id.toString() !== targetId) as typeof room.memberIds;
+  if (room.memberIds.length === before) return false;
+
+  const theirDeviceIds = new Set((await Device.find({ ownerId: targetId }).select("_id")).map((d) => d._id.toString()));
+  room.deviceIds = room.deviceIds.filter((id) => !theirDeviceIds.has(id.toString())) as typeof room.deviceIds;
+  await room.save();
+  return true;
+}
+
+// Owner-only.
 export const removeMember = asyncHandler(async (req: Request, res: Response) => {
   const room = await Room.findOne({ _id: req.params.roomId, ownerId: req.userId });
   if (!room) throw ApiError.notFound("Room not found");
 
   const targetId = req.params.userId;
-  if (targetId === req.userId) throw ApiError.badRequest("You can't remove yourself — delete the room instead");
+  if (targetId === req.userId) throw ApiError.badRequest("You can't remove yourself. Delete the room instead.");
 
-  const before = room.memberIds.length;
-  room.memberIds = room.memberIds.filter((id) => id.toString() !== targetId) as typeof room.memberIds;
-  if (room.memberIds.length === before) throw ApiError.notFound("That person isn't a member of this room");
-
-  const theirDeviceIds = new Set((await Device.find({ ownerId: targetId }).select("_id")).map((d) => d._id.toString()));
-  room.deviceIds = room.deviceIds.filter((id) => !theirDeviceIds.has(id.toString())) as typeof room.deviceIds;
-
-  await room.save();
+  const removed = await dropMemberFromRoom(room, targetId);
+  if (!removed) throw ApiError.notFound("That person isn't a member of this room");
 
   const removedUser = await User.findById(targetId).select("name");
   await recordActivity({
@@ -214,10 +221,36 @@ export const removeMember = asyncHandler(async (req: Request, res: Response) => 
 
   getIO()?.to(`room:${room._id.toString()}`).emit("room:member-removed", { roomId: room._id, userId: targetId });
   // The removed member's own client(s) are still subscribed to this room's
-  // socket channel until they reconnect otherwise — nudge them directly.
+  // socket channel until they reconnect otherwise, so nudge them directly.
   getIO()?.to(`user:${targetId}`).emit("room:removed-from", { roomId: room._id });
 
   res.json({ success: true, data: { roomId: room._id, userId: targetId } });
+});
+
+// The room-membership counterpart to removeMember: any member (never the
+// owner, who has to delete the room instead) can remove themselves.
+export const leaveRoom = asyncHandler(async (req: Request, res: Response) => {
+  const room = await Room.findOne({ _id: req.params.roomId });
+  if (!room) throw ApiError.notFound("Room not found");
+  if (room.ownerId.toString() === req.userId) {
+    throw ApiError.badRequest("Room owners can't leave. Delete the room instead.");
+  }
+
+  const removed = await dropMemberFromRoom(room, req.userId!);
+  if (!removed) throw ApiError.notFound("You're not a member of this room");
+
+  const user = await User.findById(req.userId).select("name");
+  await recordActivity({
+    ownerId: req.userId!,
+    roomId: room._id.toString(),
+    type: ActivityType.MEMBER_REMOVED,
+    message: `${user?.get("name") ?? "Someone"} left the room`,
+    metadata: { userId: req.userId },
+  });
+
+  getIO()?.to(`room:${room._id.toString()}`).emit("room:member-removed", { roomId: room._id, userId: req.userId });
+
+  res.json({ success: true, data: { roomId: room._id } });
 });
 
 export const updateRoom = asyncHandler(async (req: Request, res: Response) => {

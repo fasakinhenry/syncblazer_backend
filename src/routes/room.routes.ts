@@ -6,6 +6,7 @@ import {
   getRoom,
   inviteToRoom,
   joinRoom,
+  leaveRoom,
   listRooms,
   removeMember,
   updateRoom,
@@ -33,4 +34,5 @@ roomRouter.get("/:roomId", validate({ params: roomIdParamSchema }), getRoom);
 roomRouter.patch("/:roomId", validate({ params: roomIdParamSchema, body: updateRoomSchema }), updateRoom);
 roomRouter.delete("/:roomId", validate({ params: roomIdParamSchema }), deleteRoom);
 roomRouter.post("/:roomId/invite", validate({ params: roomIdParamSchema, body: inviteToRoomSchema }), inviteToRoom);
+roomRouter.post("/:roomId/leave", validate({ params: roomIdParamSchema }), leaveRoom);
 roomRouter.delete("/:roomId/members/:userId", validate({ params: roomMemberParamSchema }), removeMember);
