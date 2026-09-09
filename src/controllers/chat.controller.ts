@@ -168,20 +168,27 @@ export const listMessages = asyncHandler(async (req: Request, res: Response) => 
   });
 });
 
-// A cheap peek used only to compute an unread badge outside the chat
-// panel itself (e.g. on RoomDetailPage) — deliberately returns nothing
-// about content, just enough to compare against the viewer's locally
-// stored "last read" timestamp.
-export const getLatestMessage = asyncHandler(async (req: Request, res: Response) => {
+// A cheap peek used only to compute an unread badge outside the chat panel
+// itself (e.g. on RoomDetailPage) — deliberately returns nothing about
+// content, just enough to show a real count against the viewer's locally
+// stored "last read" timestamp (?since=<ISO date>, defaults to "everything").
+export const getChatUnreadInfo = asyncHandler(async (req: Request, res: Response) => {
   const roomId = req.params.roomId;
   await requireMembership(req.userId!, roomId);
 
-  const latest = await Message.findOne({ roomId }).sort({ createdAt: -1 }).select("createdAt senderId").lean();
+  const since = req.query.since ? new Date(req.query.since as string) : new Date(0);
+
+  const [latest, unreadCount] = await Promise.all([
+    Message.findOne({ roomId }).sort({ createdAt: -1 }).select("createdAt senderId").lean(),
+    Message.countDocuments({ roomId, createdAt: { $gt: since }, senderId: { $ne: req.userId } }),
+  ]);
+
   res.json({
     success: true,
     data: {
       createdAt: latest?.createdAt?.toISOString() ?? null,
       senderId: latest?.senderId?.toString() ?? null,
+      unreadCount,
     },
   });
 });

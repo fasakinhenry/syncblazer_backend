@@ -9,6 +9,10 @@ export const chatMessagesQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).optional(),
 });
 
+export const chatUnreadQuerySchema = z.object({
+  since: z.string().optional(),
+});
+
 const envelopeSchema = z.object({
   deviceId: z.string().min(1),
   wrappedKey: z.string().min(1),

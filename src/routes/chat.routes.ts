@@ -3,7 +3,7 @@ import multer from "multer";
 import {
   getChatDevices,
   getChatEpoch,
-  getLatestMessage,
+  getChatUnreadInfo,
   getMyKeyEnvelopes,
   listMessages,
   rotateChatEpoch,
@@ -13,7 +13,12 @@ import {
 } from "@/controllers/chat.controller.ts";
 import { requireAuth } from "@/middleware/auth.middleware.ts";
 import { validate } from "@/middleware/validate.middleware.ts";
-import { chatMessagesQuerySchema, chatRoomParamSchema, uploadEnvelopesSchema } from "@/validators/chat.validators.ts";
+import {
+  chatMessagesQuerySchema,
+  chatRoomParamSchema,
+  chatUnreadQuerySchema,
+  uploadEnvelopesSchema,
+} from "@/validators/chat.validators.ts";
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -41,4 +46,8 @@ chatRouter.get(
   validate({ params: chatRoomParamSchema, query: chatMessagesQuerySchema }),
   listMessages
 );
-chatRouter.get("/:roomId/latest", validate({ params: chatRoomParamSchema }), getLatestMessage);
+chatRouter.get(
+  "/:roomId/unread",
+  validate({ params: chatRoomParamSchema, query: chatUnreadQuerySchema }),
+  getChatUnreadInfo
+);
