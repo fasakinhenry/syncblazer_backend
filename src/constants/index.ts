@@ -53,6 +53,10 @@ export const RoomType = {
   PROJECT: "project",
   TEMPORARY: "temporary",
   SHARED: "shared",
+  // A distinct room kind, not just a "shared" room with a flag: grouped
+  // people+devices, group sending, and a persistent Files history. Chosen
+  // at creation, same as every other type here — see CreateRoomModal.tsx.
+  PUBLIC: "public",
 } as const;
 export type RoomType = (typeof RoomType)[keyof typeof RoomType];
 
@@ -79,6 +83,8 @@ export const NotificationType = {
   NOTE_SHARED: "note_shared",
   NOTE_UPDATED: "note_updated",
   NOTE_DELETED: "note_deleted",
+  FILE_SHARED: "file_shared",
+  FILE_LIKED: "file_liked",
 } as const;
 export type NotificationType = (typeof NotificationType)[keyof typeof NotificationType];
 
@@ -86,6 +92,7 @@ export const NotificationCategory = {
   ROOMS: "rooms",
   DEVICES: "devices",
   NOTES: "notes",
+  FILES: "files",
 } as const;
 export type NotificationCategory = (typeof NotificationCategory)[keyof typeof NotificationCategory];
 
@@ -96,4 +103,6 @@ export const NOTIFICATION_CATEGORY_BY_TYPE: Record<NotificationType, Notificatio
   [NotificationType.NOTE_SHARED]: NotificationCategory.NOTES,
   [NotificationType.NOTE_UPDATED]: NotificationCategory.NOTES,
   [NotificationType.NOTE_DELETED]: NotificationCategory.NOTES,
+  [NotificationType.FILE_SHARED]: NotificationCategory.FILES,
+  [NotificationType.FILE_LIKED]: NotificationCategory.FILES,
 };

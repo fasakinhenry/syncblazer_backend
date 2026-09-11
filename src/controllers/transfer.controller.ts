@@ -1,6 +1,7 @@
 import type { Request, Response } from "express";
 import { Transfer } from "@/models/Transfer.model.ts";
 import { Device } from "@/models/Device.model.ts";
+import { Room } from "@/models/Room.model.ts";
 import { ApiError } from "@/utils/ApiError.ts";
 import { asyncHandler } from "@/utils/asyncHandler.ts";
 import { TransferStatus, ActivityType } from "@/constants/index.ts";
@@ -10,12 +11,21 @@ import { getIO } from "@/sockets/socket.server.ts";
 export const createTransfer = asyncHandler(async (req: Request, res: Response) => {
   const { senderDeviceId, receiverDeviceId } = req.body;
 
-  const [sender, receiver] = await Promise.all([
-    Device.findOne({ _id: senderDeviceId, ownerId: req.userId }),
-    Device.findOne({ _id: receiverDeviceId, ownerId: req.userId }),
-  ]);
+  const sender = await Device.findOne({ _id: senderDeviceId, ownerId: req.userId });
   if (!sender) throw ApiError.notFound("Sender device not found");
+
+  // The receiver doesn't have to be one of YOUR devices — sending to
+  // someone else's device in a shared room is a normal, supported flow.
+  // It just has to actually be a device, and share a room with the
+  // sender's device (same check the WebRTC signaling relay already uses
+  // for the exact same cross-account case, see sockets/signaling.ts).
+  const receiver = await Device.findById(receiverDeviceId);
   if (!receiver) throw ApiError.notFound("Receiver device not found");
+  const sameOwner = receiver.get("ownerId").toString() === req.userId;
+  if (!sameOwner) {
+    const sharedRoom = await Room.exists({ deviceIds: { $all: [senderDeviceId, receiverDeviceId] } });
+    if (!sharedRoom) throw ApiError.notFound("Receiver device not found");
+  }
 
   const transfer = await Transfer.create({
     ...req.body,
@@ -47,7 +57,14 @@ export const listTransfers = asyncHandler(async (req: Request, res: Response) =>
     cursor?: string;
   };
 
-  const filter: Record<string, unknown> = { ownerId: req.userId };
+  // Not just what I sent — also anything addressed to one of my devices,
+  // even from someone else's account (a shared-room send). Without the
+  // second half here, a recipient could never see a transfer in their own
+  // history, only the sender could.
+  const myDeviceIds = (await Device.find({ ownerId: req.userId }).select("_id")).map((d) => d._id);
+  const filter: Record<string, unknown> = {
+    $or: [{ ownerId: req.userId }, { receiverDeviceId: { $in: myDeviceIds } }],
+  };
   if (roomId) filter.roomId = roomId;
   if (type) filter.type = type;
   if (status) filter.status = status;

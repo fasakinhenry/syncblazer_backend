@@ -13,6 +13,7 @@ import { adminRouter } from "@/routes/admin.routes.ts";
 import { analyticsRouter } from "@/routes/analytics.routes.ts";
 import { chatRouter } from "@/routes/chat.routes.ts";
 import { notificationRouter } from "@/routes/notification.routes.ts";
+import { roomFileRouter } from "@/routes/roomFile.routes.ts";
 
 export const apiRouter = Router();
 
@@ -34,3 +35,4 @@ apiRouter.use("/admin", adminRouter);
 apiRouter.use("/analytics", analyticsRouter);
 apiRouter.use("/chat", chatRouter);
 apiRouter.use("/notifications", notificationRouter);
+apiRouter.use("/room-files", roomFileRouter);

@@ -4,7 +4,7 @@ import { RoomType } from "@/constants/index.ts";
 export const createRoomSchema = z.object({
   name: z.string().min(1).max(80),
   type: z
-    .enum([RoomType.PERSONAL, RoomType.PROJECT, RoomType.TEMPORARY, RoomType.SHARED])
+    .enum([RoomType.PERSONAL, RoomType.PROJECT, RoomType.TEMPORARY, RoomType.SHARED, RoomType.PUBLIC])
     .default(RoomType.SHARED),
 });
 

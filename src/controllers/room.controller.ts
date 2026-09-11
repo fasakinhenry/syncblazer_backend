@@ -60,6 +60,65 @@ export const getRoom = asyncHandler(async (req: Request, res: Response) => {
   res.json({ success: true, data: { room, recentActivity, members } });
 });
 
+// Deliberately separate from getRoom above rather than folded into it, so
+// the existing room-detail data shape (and every page that already
+// consumes it) doesn't change at all — only PublicRoomPage.tsx calls this.
+// Online/last-seen is derived per-person at read time (any device online
+// -> online; otherwise the most recent lastSeenAt across their devices),
+// not stored anywhere new.
+export const getMembersWithDevices = asyncHandler(async (req: Request, res: Response) => {
+  const room = await Room.findOne({
+    _id: req.params.roomId,
+    $or: [{ ownerId: req.userId }, { memberIds: req.userId }],
+  }).select("ownerId memberIds deviceIds");
+  if (!room) throw ApiError.notFound("Room not found");
+
+  const memberIds = [
+    room.get("ownerId").toString(),
+    ...(room.get("memberIds") as Types.ObjectId[]).map((id) => id.toString()),
+  ];
+  const [members, devices] = await Promise.all([
+    User.find({ _id: { $in: memberIds } }).select("name avatarUrl"),
+    Device.find({ _id: { $in: room.get("deviceIds") } }).select("name type platform status lastSeenAt ownerId"),
+  ]);
+
+  const devicesByOwner = new Map<string, typeof devices>();
+  for (const device of devices) {
+    const ownerId = device.get("ownerId").toString();
+    const list = devicesByOwner.get(ownerId) ?? [];
+    list.push(device);
+    devicesByOwner.set(ownerId, list);
+  }
+
+  const result = members.map((member) => {
+    const memberId = member._id.toString();
+    const memberDevices = devicesByOwner.get(memberId) ?? [];
+    const online = memberDevices.some((d) => d.get("status") === "online");
+    const lastSeenAt = memberDevices.reduce<Date | null>((latest, d) => {
+      const seen = d.get("lastSeenAt") as Date | undefined;
+      if (!seen) return latest;
+      return !latest || seen > latest ? seen : latest;
+    }, null);
+    return {
+      _id: memberId,
+      name: member.get("name"),
+      avatarUrl: member.get("avatarUrl"),
+      online,
+      lastSeenAt,
+      devices: memberDevices.map((d) => ({
+        _id: d._id,
+        name: d.get("name"),
+        type: d.get("type"),
+        platform: d.get("platform"),
+        status: d.get("status"),
+        lastSeenAt: d.get("lastSeenAt"),
+      })),
+    };
+  });
+
+  res.json({ success: true, data: { members: result } });
+});
+
 export const createRoom = asyncHandler(async (req: Request, res: Response) => {
   const code = await generateUniqueRoomCode(codeExists);
 

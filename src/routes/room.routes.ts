@@ -3,6 +3,7 @@ import {
   createInstantRoom,
   createRoom,
   deleteRoom,
+  getMembersWithDevices,
   getRoom,
   inviteToRoom,
   joinRoom,
@@ -31,6 +32,11 @@ roomRouter.post("/", validate({ body: createRoomSchema }), createRoom);
 roomRouter.post("/instant", createInstantRoom);
 roomRouter.post("/join", validate({ body: joinRoomSchema }), joinRoom);
 roomRouter.get("/:roomId", validate({ params: roomIdParamSchema }), getRoom);
+roomRouter.get(
+  "/:roomId/members-with-devices",
+  validate({ params: roomIdParamSchema }),
+  getMembersWithDevices
+);
 roomRouter.patch("/:roomId", validate({ params: roomIdParamSchema, body: updateRoomSchema }), updateRoom);
 roomRouter.delete("/:roomId", validate({ params: roomIdParamSchema }), deleteRoom);
 roomRouter.post("/:roomId/invite", validate({ params: roomIdParamSchema, body: inviteToRoomSchema }), inviteToRoom);
