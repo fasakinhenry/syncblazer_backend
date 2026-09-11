@@ -1,7 +1,6 @@
-import { Room } from "@/models/Room.model.ts";
-import { User } from "@/models/User.model.ts";
 import { env } from "@/config/env.ts";
 import { sendEmailSafe } from "@/services/mailer.service.ts";
+import { roomNotifyTargets } from "@/services/roomMembers.service.ts";
 import {
   loginNoticeEmailHtml,
   noteDeletedEmailHtml,
@@ -36,25 +35,6 @@ export async function notifyRoomCreated(user: { email?: string | null; name: str
     subject: `New room created: ${room.name}`,
     html: roomCreatedEmailHtml(user.name, room.name, String(room._id)),
   });
-}
-
-/** Everyone with room-level access to a note, except the person who just
- * triggered the event — used by both "note shared with you" (visibility
- * flips to "room") and "a note you had access to was deleted". Guests
- * (no email on file) are silently skipped, not an error. */
-async function roomNotifyTargets(
-  roomId: unknown,
-  excludeUserId: string
-): Promise<{ _id: unknown; name: string; email?: string | null }[]> {
-  const room = await Room.findById(roomId).select("ownerId memberIds");
-  if (!room) return [];
-  const recipientIds = [room.get("ownerId"), ...(room.get("memberIds") as unknown[])]
-    .map((id) => String(id))
-    .filter((id) => id !== excludeUserId);
-  if (recipientIds.length === 0) return [];
-
-  const users = await User.find({ _id: { $in: recipientIds } }).select("name email");
-  return users.map((u) => ({ _id: u._id, name: u.get("name"), email: u.get("email") }));
 }
 
 export async function notifyNoteShared(

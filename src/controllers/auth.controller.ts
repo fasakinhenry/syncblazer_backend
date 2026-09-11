@@ -8,7 +8,7 @@ import { Note } from "@/models/Note.model.ts";
 import { Transfer } from "@/models/Transfer.model.ts";
 import { Activity } from "@/models/Activity.model.ts";
 import { RoomInvite } from "@/models/RoomInvite.model.ts";
-import { RoomType, DeviceStatus, ActivityType } from "@/constants/index.ts";
+import { RoomType, DeviceStatus, ActivityType, NotificationType } from "@/constants/index.ts";
 import { ApiError } from "@/utils/ApiError.ts";
 import { asyncHandler } from "@/utils/asyncHandler.ts";
 import { signAccessToken, signRefreshToken, verifyRefreshToken } from "@/utils/jwt.ts";
@@ -16,6 +16,8 @@ import { generateAvatarUrl, generateGuestName } from "@/utils/guestIdentity.ts";
 import { dailyCounts } from "@/utils/dailyCounts.ts";
 import { env } from "@/config/env.ts";
 import { notifyLoginNotice, notifyWelcome } from "@/services/notifications.service.ts";
+import { notifyUser } from "@/services/userNotification.service.ts";
+import { roomMemberIds } from "@/services/roomMembers.service.ts";
 import { recordActivity } from "@/services/activity.service.ts";
 import { getIO } from "@/sockets/socket.server.ts";
 
@@ -131,6 +133,13 @@ async function applyRoomInvite(userId: string, userName: string, email: string, 
     type: ActivityType.MEMBER_JOINED,
     message: `${userName} joined the room`,
     metadata: { userId },
+  });
+  void notifyUser({
+    recipientIds: await roomMemberIds(room._id, userId),
+    actorId: userId,
+    type: NotificationType.MEMBER_JOINED,
+    message: `${userName} joined "${room.get("name")}"`,
+    roomId: room._id.toString(),
   });
   getIO()?.to(`room:${room._id.toString()}`).emit("room:member-joined", { roomId: room._id });
 }

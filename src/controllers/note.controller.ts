@@ -5,7 +5,7 @@ import { User } from "@/models/User.model.ts";
 import { ApiError } from "@/utils/ApiError.ts";
 import { asyncHandler } from "@/utils/asyncHandler.ts";
 import { recordActivity } from "@/services/activity.service.ts";
-import { ActivityType } from "@/constants/index.ts";
+import { ActivityType, NotificationType } from "@/constants/index.ts";
 import { getIO } from "@/sockets/socket.server.ts";
 import {
   isGuestUser,
@@ -15,6 +15,8 @@ import {
   noteWriteFilter,
 } from "@/services/noteAccess.service.ts";
 import { notifyNoteDeleted, notifyNoteShared } from "@/services/notifications.service.ts";
+import { notifyUser } from "@/services/userNotification.service.ts";
+import { roomMemberIds } from "@/services/roomMembers.service.ts";
 
 // Machine-readable so the frontend can show a "create an account to
 // collaborate" prompt instead of a generic error toast.
@@ -124,9 +126,32 @@ export const updateNote = asyncHandler(async (req: Request, res: Response) => {
     getIO()?.to(`room:${newRoomId}`).emit("note:updated", { note });
   }
 
-  if (patch.visibility === "room" && !wasVisibilityRoom) {
+  const justShared = patch.visibility === "room" && !wasVisibilityRoom;
+  const movedRoom = !!(oldRoomId && oldRoomId !== newRoomId);
+
+  if (justShared) {
     const sharer = await User.findById(req.userId).select("name");
     if (sharer) void notifyNoteShared(note, req.userId!, sharer.get("name"));
+    void notifyUser({
+      recipientIds: await roomMemberIds(newRoomId, req.userId),
+      actorId: req.userId,
+      type: NotificationType.NOTE_SHARED,
+      message: `A note was shared with "${note.title}"`,
+      roomId: newRoomId,
+      noteId: note._id.toString(),
+    });
+  } else if (note.get("visibility") === "room" && !movedRoom) {
+    // An ordinary edit to a note that was already shared with the room —
+    // coalesced by notifyUser so rapid autosave-debounced edits don't spam
+    // recipients with one row (or push) per keystroke-batch.
+    void notifyUser({
+      recipientIds: await roomMemberIds(newRoomId, req.userId),
+      actorId: req.userId,
+      type: NotificationType.NOTE_UPDATED,
+      message: `"${note.title}" was updated`,
+      roomId: newRoomId,
+      noteId: note._id.toString(),
+    });
   }
 
   res.json({ success: true, data: { note } });
@@ -138,7 +163,16 @@ export const deleteNote = asyncHandler(async (req: Request, res: Response) => {
   const note = await Note.findOneAndDelete({ _id: req.params.noteId, ownerId: req.userId });
   if (!note) throw ApiError.notFound("Note not found");
 
-  if (note.get("visibility") === "room") void notifyNoteDeleted(note, req.userId!);
+  if (note.get("visibility") === "room") {
+    void notifyNoteDeleted(note, req.userId!);
+    void notifyUser({
+      recipientIds: await roomMemberIds(note.roomId, req.userId),
+      actorId: req.userId,
+      type: NotificationType.NOTE_DELETED,
+      message: `"${note.get("title")}" was deleted`,
+      roomId: note.roomId.toString(),
+    });
+  }
 
   getIO()?.to(`room:${note.roomId.toString()}`).emit("note:deleted", { noteId: note._id });
 

@@ -11,7 +11,9 @@ import { asyncHandler } from "@/utils/asyncHandler.ts";
 import { generateUniqueRoomCode } from "@/utils/roomName.ts";
 import { recordActivity } from "@/services/activity.service.ts";
 import { notifyRoomCreated, notifyRoomInvite, notifyRoomMemberAdded } from "@/services/notifications.service.ts";
-import { ActivityType, RoomType } from "@/constants/index.ts";
+import { notifyUser } from "@/services/userNotification.service.ts";
+import { roomMemberIds } from "@/services/roomMembers.service.ts";
+import { ActivityType, NotificationType, RoomType } from "@/constants/index.ts";
 import { getIO } from "@/sockets/socket.server.ts";
 import { areDevicesOnSameNetwork } from "@/sockets/presence.ts";
 
@@ -116,12 +118,20 @@ export const joinRoom = asyncHandler(async (req: Request, res: Response) => {
 
   if (!alreadyMember) {
     const user = await User.findById(req.userId).select("name");
+    const joinerName = user?.get("name") ?? "Someone";
     await recordActivity({
       ownerId: req.userId!,
       roomId: room._id.toString(),
       type: ActivityType.MEMBER_JOINED,
-      message: `${user?.get("name") ?? "Someone"} joined the room`,
+      message: `${joinerName} joined the room`,
       metadata: { userId: req.userId },
+    });
+    void notifyUser({
+      recipientIds: await roomMemberIds(room._id, req.userId),
+      actorId: req.userId,
+      type: NotificationType.MEMBER_JOINED,
+      message: `${joinerName} joined "${room.name}"`,
+      roomId: room._id.toString(),
     });
   }
 
@@ -162,6 +172,13 @@ export const inviteToRoom = asyncHandler(async (req: Request, res: Response) => 
     getIO()?.to(`room:${room._id.toString()}`).emit("room:member-joined", { roomId: room._id });
 
     void notifyRoomMemberAdded({ email: existingUser.get("email"), name: existingUser.get("name") }, room, inviterName);
+    void notifyUser({
+      recipientIds: await roomMemberIds(room._id, req.userId),
+      actorId: req.userId,
+      type: NotificationType.MEMBER_JOINED,
+      message: `${existingUser.get("name")} joined "${room.name}"`,
+      roomId: room._id.toString(),
+    });
 
     res.json({ success: true, data: { status: "added" } });
     return;
@@ -217,6 +234,13 @@ export const removeMember = asyncHandler(async (req: Request, res: Response) => 
     type: ActivityType.MEMBER_REMOVED,
     message: `${removedUser?.get("name") ?? "Someone"} was removed from the room`,
     metadata: { userId: targetId },
+  });
+  void notifyUser({
+    recipientIds: targetId,
+    actorId: req.userId,
+    type: NotificationType.MEMBER_REMOVED,
+    message: `You were removed from "${room.name}"`,
+    roomId: room._id.toString(),
   });
 
   getIO()?.to(`room:${room._id.toString()}`).emit("room:member-removed", { roomId: room._id, userId: targetId });

@@ -68,3 +68,32 @@ export const ActivityType = {
   ROOM_CREATED: "room_created",
 } as const;
 export type ActivityType = (typeof ActivityType)[keyof typeof ActivityType];
+
+// Per-recipient notifications — distinct from ActivityType above, which is a
+// room-scoped log keyed by the actor. A notification is always keyed by who
+// should SEE it, which is a different (sometimes overlapping) set of people.
+export const NotificationType = {
+  MEMBER_JOINED: "member_joined",
+  MEMBER_REMOVED: "member_removed",
+  DEVICE_JOINED: "device_joined",
+  NOTE_SHARED: "note_shared",
+  NOTE_UPDATED: "note_updated",
+  NOTE_DELETED: "note_deleted",
+} as const;
+export type NotificationType = (typeof NotificationType)[keyof typeof NotificationType];
+
+export const NotificationCategory = {
+  ROOMS: "rooms",
+  DEVICES: "devices",
+  NOTES: "notes",
+} as const;
+export type NotificationCategory = (typeof NotificationCategory)[keyof typeof NotificationCategory];
+
+export const NOTIFICATION_CATEGORY_BY_TYPE: Record<NotificationType, NotificationCategory> = {
+  [NotificationType.MEMBER_JOINED]: NotificationCategory.ROOMS,
+  [NotificationType.MEMBER_REMOVED]: NotificationCategory.ROOMS,
+  [NotificationType.DEVICE_JOINED]: NotificationCategory.DEVICES,
+  [NotificationType.NOTE_SHARED]: NotificationCategory.NOTES,
+  [NotificationType.NOTE_UPDATED]: NotificationCategory.NOTES,
+  [NotificationType.NOTE_DELETED]: NotificationCategory.NOTES,
+};

@@ -1,11 +1,14 @@
 import type { Request, Response } from "express";
 import { Device } from "@/models/Device.model.ts";
 import { Room } from "@/models/Room.model.ts";
+import { PushSubscription } from "@/models/PushSubscription.model.ts";
 import { ApiError } from "@/utils/ApiError.ts";
 import { asyncHandler } from "@/utils/asyncHandler.ts";
 import { createPairingSession, findActivePairingSession } from "@/services/pairing.service.ts";
 import { recordActivity } from "@/services/activity.service.ts";
-import { ActivityType, DeviceStatus } from "@/constants/index.ts";
+import { notifyUser } from "@/services/userNotification.service.ts";
+import { roomMemberIds } from "@/services/roomMembers.service.ts";
+import { ActivityType, DeviceStatus, NotificationType } from "@/constants/index.ts";
 import { getIO } from "@/sockets/socket.server.ts";
 import { areDevicesOnSameNetwork } from "@/sockets/presence.ts";
 
@@ -68,6 +71,8 @@ export const removeDevice = asyncHandler(async (req: Request, res: Response) => 
       metadata: { deviceId: device._id },
     });
   }
+
+  await PushSubscription.deleteMany({ deviceId: device._id });
 
   getIO()?.to(`user:${req.userId}`).emit("device:removed", { deviceId: device._id });
 
@@ -142,6 +147,18 @@ export const consumeDevicePairingSession = asyncHandler(async (req: Request, res
     message: `${newDevice.name} connected`,
     metadata: { deviceId: newDevice._id },
   });
+
+  const room = await Room.findById(session.roomId).select("name");
+  if (room) {
+    void notifyUser({
+      recipientIds: await roomMemberIds(session.roomId, req.userId),
+      actorId: req.userId,
+      type: NotificationType.DEVICE_JOINED,
+      message: `${newDevice.name} joined "${room.get("name")}"`,
+      roomId: session.roomId.toString(),
+      deviceId: newDevice._id.toString(),
+    });
+  }
 
   getIO()?.to(`device:${session.initiatorDeviceId.toString()}`).emit("pairing:completed", {
     device: newDevice,

@@ -64,4 +64,11 @@ export const env = {
   frontendUrl: process.env.FRONTEND_URL ?? process.env.CLIENT_ORIGIN ?? "http://localhost:5173",
 
   isProduction: process.env.NODE_ENV === "production",
+
+  // Web Push (VAPID) — unset means push notifications are silently
+  // disabled; in-app + socket notifications still work fine without these.
+  // Generate a pair with `bunx web-push generate-vapid-keys`.
+  vapidPublicKey: process.env.VAPID_PUBLIC_KEY,
+  vapidPrivateKey: process.env.VAPID_PRIVATE_KEY,
+  vapidSubject: process.env.VAPID_SUBJECT ?? "mailto:support@syncblaze.app",
 };
