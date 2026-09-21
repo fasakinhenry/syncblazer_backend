@@ -12,6 +12,11 @@ const roomFileSchema = new Schema(
     senderId: { type: Schema.Types.ObjectId, ref: "User", required: true },
     senderDeviceId: { type: Schema.Types.ObjectId, ref: "Device", required: true },
     name: { type: String, required: true },
+    // Set only when this came from a folder pick — the folder-relative
+    // path (e.g. "vacation/day1/img.jpg"). `name` itself always stays the
+    // plain leaf filename; this is used only to rebuild the original
+    // folder structure inside a "download all" zip.
+    relativePath: { type: String },
     size: { type: Number, required: true },
     mimeType: { type: String },
     storageKey: { type: String, required: true },

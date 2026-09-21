@@ -32,11 +32,12 @@ export const uploadRoomFiles = asyncHandler(async (req: Request, res: Response) 
   const files = req.files as Express.Multer.File[] | undefined;
   if (!files || files.length === 0) throw ApiError.badRequest("No files provided");
 
-  const { recipientId, deliverTo, deviceId, batchId: clientBatchId } = req.body as {
+  const { recipientId, deliverTo, deviceId, batchId: clientBatchId, relativePath } = req.body as {
     recipientId?: string;
     deliverTo?: "device" | "user";
     deviceId?: string;
     batchId?: string;
+    relativePath?: string;
   };
 
   if (recipientId) {
@@ -50,6 +51,9 @@ export const uploadRoomFiles = asyncHandler(async (req: Request, res: Response) 
   // generating one only for the (now rare) case of several files still
   // arriving in a single request.
   const batchId = clientBatchId ?? (files.length > 1 ? randomUUID() : undefined);
+  // Same reasoning: relativePath describes ONE file, so it only ever
+  // applies when this request is carrying exactly that one file.
+  const singleRelativePath = files.length === 1 ? relativePath : undefined;
 
   const docs = await Promise.all(
     files.map(async (file) => {
@@ -63,6 +67,7 @@ export const uploadRoomFiles = asyncHandler(async (req: Request, res: Response) 
         senderId: req.userId,
         senderDeviceId: req.deviceId,
         name: file.originalname,
+        relativePath: singleRelativePath,
         size: stored.size,
         mimeType: stored.mimeType,
         storageKey: stored.key,

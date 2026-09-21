@@ -26,4 +26,8 @@ export const uploadRoomFilesBodySchema = z.object({
    * carrying every file — without this, nothing would tie those separate
    * rows back together as "sent as one batch" for a "download all". */
   batchId: z.string().min(1).optional(),
+  /** The folder-relative path, only when this file came from a folder
+   * pick — kept separate from the file's own name/originalname, which
+   * stays just the plain leaf filename everywhere it's displayed. */
+  relativePath: z.string().min(1).optional(),
 });
