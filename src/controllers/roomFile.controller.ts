@@ -32,10 +32,11 @@ export const uploadRoomFiles = asyncHandler(async (req: Request, res: Response) 
   const files = req.files as Express.Multer.File[] | undefined;
   if (!files || files.length === 0) throw ApiError.badRequest("No files provided");
 
-  const { recipientId, deliverTo, deviceId } = req.body as {
+  const { recipientId, deliverTo, deviceId, batchId: clientBatchId } = req.body as {
     recipientId?: string;
     deliverTo?: "device" | "user";
     deviceId?: string;
+    batchId?: string;
   };
 
   if (recipientId) {
@@ -43,7 +44,12 @@ export const uploadRoomFiles = asyncHandler(async (req: Request, res: Response) 
     if (!roomIds.includes(roomId)) throw ApiError.badRequest("That person isn't a member of this room");
   }
 
-  const batchId = files.length > 1 ? randomUUID() : undefined;
+  // Prefer the client's id — a multi-file send is one request per file now
+  // (for real per-file upload progress), so nothing here can tell two
+  // files were sent together unless the client says so. Falls back to
+  // generating one only for the (now rare) case of several files still
+  // arriving in a single request.
+  const batchId = clientBatchId ?? (files.length > 1 ? randomUUID() : undefined);
 
   const docs = await Promise.all(
     files.map(async (file) => {

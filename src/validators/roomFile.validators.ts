@@ -21,4 +21,9 @@ export const uploadRoomFilesBodySchema = z.object({
   recipientId: z.string().min(1).optional(),
   deliverTo: z.enum(["device", "user"]).optional(),
   deviceId: z.string().min(1).optional(),
+  /** Client-generated, since a multi-file send is now one request per
+   * file (for real per-file upload progress) rather than one request
+   * carrying every file — without this, nothing would tie those separate
+   * rows back together as "sent as one batch" for a "download all". */
+  batchId: z.string().min(1).optional(),
 });
